@@ -1,12 +1,14 @@
 #include "toyserver.h"
 #include <time.h>
 
-List Clients;
-int MaxNbClients;
+static List Clients;
+static int MaxNbClients;
 
-void (*ncServerClientDisconnectCallback)(Client *);
-void (*ncServerClientNewCallback)(Client *);
-void (*ncServerClientInfoCallback)(NetMsgT7 *);
+static void (*ncServerClientDisconnectCallback)(Client *);
+static void (*ncServerClientNewCallback)(Client *);
+static void (*ncServerClientInfoCallback)(NetMsgT7 *);
+
+static void clientSocketCallback(void *arg);
 
 void ncServerRemoveClient(Client *client) {
 	ncListDelete(&Clients, (ListItem *)client);
@@ -14,7 +16,7 @@ void ncServerRemoveClient(Client *client) {
 
 void ncServerDisconnectClient(Client *client)
 {
-	if (CliDisconnecting < client->status)
+	if (client->status >= CliConnected)
 	{
 		if (ncServerClientDisconnectCallback != NULL)
 			(*ncServerClientDisconnectCallback)(client);
@@ -28,37 +30,27 @@ void ncServerDisconnectClient(Client *client)
 
 int ncServerSendClientTcpMsg(Client *client, NetMsg *msg)
 {
-	int ret;
-
-	if (client == NULL || msg == NULL) {
-		ret = 0;
+	if (client == NULL || msg == NULL)
+		return 0;
+	if (client->status <= CliDisconnecting)
+		return 0;
+	// FIXME passing part of Client as Socket???
+	if (ncSocketTcpSendMsg((Socket *)&client->sockfd, msg, 1) == 0)
+	{
+		ncLogPrintf(1, "ERROR sending TCP message to client \'%s\' (ID=%d).", client->listItem.name,
+				client->listItem.id);
+		ncServerDisconnectClient(client);
+		return 0;
 	}
-	else if (client->status < CliConnected) {
-		ret = 0;
-	}
-	else {
-		// FIXME passing part of Client as Socket???
-		ret = ncSocketTcpSendMsg((Socket *)&client->sockfd, msg, 1);
-		if (ret == 0)
-		{
-			ncLogPrintf(1, "ERROR sending TCP message to client \'%s\' (ID=%d).", client->listItem.name,
-					client->listItem.id);
-			ncServerDisconnectClient(client);
-			ret = 0;
-		}
-		else {
-			client->tcpSentMsg++;
-			ret = 1;
-		}
-	}
-	return ret;
+	client->tcpSentMsg++;
+	return 1;
 }
 
 int ncServerSendClientUdpMsg(Client *client, NetMsg *msg)
 {
 	if (client == NULL || msg == NULL)
 		return 0;
-	if (client->status < CliConnected)
+	if (client->status <= CliDisconnecting)
 		return 0;
 	int rc = ncSocketUdpSendMsg(ncServerUdpSocket, client->ipAddress, client->udpPort, msg);
 	if (rc == 0) {
@@ -150,6 +142,8 @@ int ncServerLoginCallback(int sockfd, uint32_t srcIp, uint16_t tcpPort, NetMsgT1
 				char *addrstr = ncGetAddrString(client->ipAddress);
 				ncLogPrintf(1,"New client \'%s\' (ID=%d) from %s , %d, udp %d on socket %d at %s.",
 						client->listItem.name, client->listItem.id, addrstr, ntohs(tcpPort), client->udpPort, client->sockfd, timestr);
+				stopPollingSocket(sockfd);
+				pollReadSocket(sockfd, clientSocketCallback, client);
 				if (ncServerClientNewCallback != NULL)
 					(*ncServerClientNewCallback)(client);
 				strcpy(msg->userName, client->listItem.name);
@@ -221,75 +215,78 @@ void ncServerSendAllClientsTcpMsgExceptFromAndRoom(NetMsg *msg, int clientId, Ch
 	}
 }
 
+// FIXME to delete. But there's some logic left that needs to go somewhere
 void ncServerManageClients(void)
 {
 	Client *client = (Client *)Clients.head;
 	while (client != NULL)
 	{
 		Client *nextClient = (Client *)client->listItem.next;
-		if (client->status < CliConnected) {
+		if (client->status <= CliDisconnecting) {
 			if (client->chatRoom == NULL)
 				ncServerRemoveClient(client);
 		}
+		client = nextClient;
+	}
+}
+
+static void clientSocketCallback(void *arg)
+{
+	Client *client = (Client *)arg;
+	// FIXME Client to Socket hack
+	ssize_t len = ncSocketBufReadMsg((Socket *)&client->sockfd, (void (*)(uint8_t *, void *))ncServerClientReadMsgCallback, client);
+	if (len < 0) {
+		ncServerDisconnectClient(client);
+	}
+	else if (client->status >= CliConnected)		// FIXME should this go elsewhere? won't be run if nothing is received from the sock
+	{
+		if (client->sendBufSize == 0 || client->sockfd == -1)	// FIXME if client->sockfd == -1, we can't send a message...
+		{
+			if (client->timer != 0 && client->timer < TimerRef)
+			{
+				client->timer = 0;
+				NetMsgT2 pingMsg;
+				pingMsg.timer = TimerRef;
+				pingMsg.head.size = 16;
+				pingMsg.head.msgType = 2;
+				pingMsg.head.msgId = 0;
+				ncServerSendClientTcpMsg(client, (NetMsg *)&pingMsg);
+			}
+		}
 		else
 		{
-			// FIXME Client to Socket hack
-			ssize_t len = ncSocketBufReadMsg((Socket *)&client->sockfd, (void (*)(uint8_t *, void *))ncServerClientReadMsgCallback, client);
-			if (len < 0) {
+			struct timeval tv;
+			tv.tv_sec = 0;
+			tv.tv_usec = 0;
+			fd_set fdset;
+			FD_ZERO(&fdset);
+			FD_SET(client->sockfd, &fdset);
+			ssize_t rc = select(client->sockfd + 1, NULL, &fdset, NULL, &tv);
+			if (rc == -1) {
 				ncServerDisconnectClient(client);
 			}
-			else if (CliDisconnecting < client->status)
+			else if (rc > 0)
 			{
-				if (client->sendBufSize == 0 || client->sockfd == -1)
+				rc = send(client->sockfd, client->sendBuf, client->sendBufSize, MSG_NOSIGNAL);
+				if (rc == -1)
 				{
-					if (client->timer != 0 && client->timer < TimerRef)
-					{
-						client->timer = 0;
-						NetMsgT2 pingMsg;
-						pingMsg.timer = TimerRef;
-						pingMsg.head.size = 16;
-						pingMsg.head.msgType = 2;
-						pingMsg.head.msgId = 0;
-						ncServerSendClientTcpMsg(client, (NetMsg *)&pingMsg);
-					}
+					ncLogPrintf(0, "ERROR : ncServerManageClients() : Can\'t send buffer data -> send(%d) error ",
+							client->sockfd);
+					ncSocketError(ncSocketGetLastError());
+					ncServerDisconnectClient(client);
+				}
+				else if (rc == client->sendBufSize) {
+					client->sendBufSize = 0;
+					ncLogPrintf(0, "!!! SUCCESS !!! ncServerManageClients() : buffered data successfully sent !");
 				}
 				else
 				{
-					struct timeval tv;
-					tv.tv_sec = 0;
-					tv.tv_usec = 0;
-					fd_set fdset;
-					FD_ZERO(&fdset);
-					FD_SET(client->sockfd, &fdset);
-					ssize_t rc = select(client->sockfd + 1, NULL, &fdset, NULL, &tv);
-					if (rc == -1) {
-						ncServerDisconnectClient(client);
-					}
-					else if (rc > 0)
-					{
-						rc = send(client->sockfd, client->sendBuf, client->sendBufSize, MSG_NOSIGNAL);
-						if (rc == -1)
-						{
-							ncLogPrintf(0, "ERROR : ncServerManageClients() : Can\'t send buffer data -> send(%d) error ",
-									client->sockfd);
-							ncSocketError(ncSocketGetLastError());
-							ncServerDisconnectClient(client);
-						}
-						else if (rc == client->sendBufSize) {
-							client->sendBufSize = 0;
-							ncLogPrintf(0, "!!! SUCCESS !!! ncServerManageClients() : buffered data successfully sent !");
-						}
-						else
-						{
-							ncLogPrintf(0, "ERROR : ncServerManageClients() : Can\'t send buffer data -> not all data sent !");
-							ncSocketError(ncSocketGetLastError());
-							ncServerDisconnectClient(client);
-						}
-					}
+					ncLogPrintf(0, "ERROR : ncServerManageClients() : Can\'t send buffer data -> not all data sent !");
+					ncSocketError(ncSocketGetLastError());
+					ncServerDisconnectClient(client);
 				}
 			}
 		}
-		client = nextClient;
 	}
 }
 
@@ -297,8 +294,8 @@ Client *ncClientFindById(int clientId) {
 	return (Client *)ncListFindById(&Clients, clientId);
 }
 
-void ncServerEnumClients(void *callback) {
-	ncListEnum(&Clients, callback);
+void ncServerEnumClients(void (*callback)(Client *, void *), void *arg) {
+	ncListEnum(&Clients, (ListEnumCallback)callback, arg);
 }
 
 

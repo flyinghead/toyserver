@@ -182,9 +182,9 @@ void ncGameRoomQuit(Client *client)
 			msg.msgType = 24;
 			ncGameSendMsgExceptFrom(gameRoom, &msg, client->listItem.id);
 			client->chatRoom = NULL;
-			if (CliDisconnecting < client->status)
+			if (client->status >= CliConnected)
 				client->status = CliConnected;
-			gameRoom->playerCount--;
+			gameRoom->playerCount -= 1;
 			break;
 		}
 	}
@@ -355,7 +355,6 @@ void ncGameCheckEnd(GameRoom *gameRoom)
 
 void ncGameRoomManage(void)
 {
-	ncGameManageUdp();
 	GameRoom *gameRoom = (GameRoom *)GameRooms.head;
 	GameRoom *nextGameRoom = gameRoom;
 	for (;;)
@@ -368,12 +367,12 @@ void ncGameRoomManage(void)
 		{
 			Client *client = gameRoom->players[idx];
 			if (Udp_Timeout != 0 && client->status == CliPlaying
-					&& client->lastUdpTimer != 0 && Udp_Timeout < TimerRef - client->lastUdpTimer) {
+					&& client->lastUdpTimer != 0 && Udp_Timeout < TimerRef - client->lastUdpTimer) {	// FIXME will time out everyone when TimerRef rolls over?
 				ncLogPrintf(1, "!!!TIMEOUT : client \'%s\' (ID=%d) UDP timeout !", client->listItem.name,
 						client->listItem.id);
 				ncServerDisconnectClient(client);
 			}
-			if (client->status < CliConnected) {
+			if (client->status <= CliDisconnecting) {
 				ncGameRoomQuit(gameRoom->players[idx]);
 				break;
 			}
@@ -491,8 +490,8 @@ void ncGameSetPlayerReady(Client *client, NetMsg *msg)
 	}
 }
 
-void ncServerEnumGameRooms(void *callback) {
-	ncListEnum(&GameRooms,callback);
+void ncServerEnumGameRooms(void (*callback)(GameRoom *gameRom, void *arg), void *arg) {
+	ncListEnum(&GameRooms, (ListEnumCallback)callback, arg);
 }
 
 const char *ncGetTimeString(int time_)

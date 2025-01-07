@@ -8,14 +8,50 @@
 
 #include "globals.h"
 
+static ChatInfo tmpInfoChat;
+
+static Stats TotalStats;
+static Stats DailyStats;
+
+struct HighScores {
+	int times[8];
+	char RacerNames[8][16];
+	uint8_t RacerCars[8];
+	char RacerCountries[8][10];
+};
+typedef struct HighScores HighScores;
+static HighScores TrHighScores;
+
+struct BestLap {
+    int time;
+    char name[16];
+};
+typedef struct BestLap BestLap;
+static BestLap TrBestLaps[14][8];
+
+static int FirstTimer;
+static int ToyServerFPS;
+static int MinFps = 99999999;
+static int MaxFps;
+static unsigned NbFrames;
+static unsigned NbFrames_hi;
+
+static uint16_t Tcp_Port = 2048;
+static uint16_t Udp_Port = 2049;
+static int ClientUdpTimeout = 7000;
+static int UdpTimeout = 5000;
+static short NbCommandPaquetsPerSec = 8;
+static short NbDynamixPaquetsPerSec = 6;
+
+static int ProgramTerminated;
+static int LastDailyDay;
+static int Nb;
+
 void ManageTime(void)
 {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	TimerRef = tv.tv_sec * 1000 + tv.tv_usec / 1000;
-	long long now = (long long)tv.tv_sec * 1000000 + (long long)tv.tv_usec;
-	PrecTimer_lo = (uint32_t)now;
-	PrecTimer_hi = (uint32_t)(now >> 32);
 }
 
 void RefreshInfo(int roomId, int verbose)
@@ -71,7 +107,7 @@ void ReadHighScoreFile(void)
 	}
 }
 
-void HighScoresChatFile(FILE *fp, HighScores *data)
+static void HighScoresChatFile(FILE *fp, HighScores *data)
 {
 	unsigned hundredths;
 	unsigned secs;
@@ -635,11 +671,9 @@ void ServerManage(void)
 {
 	static int lastrefresh;
 
-	ncServerManageConnections();
-	ncServerManageLogin();
 	ncServerManageClients();
 	ncChatRoomManage();
-	ncGameRoomManage();
+	ncGameRoomManage();	// FIXME there's some timeout management there
 	if (lastrefresh == 0 || lastrefresh < TimerRef)
 	{
 		lastrefresh = TimerRef + 1000;
@@ -747,23 +781,23 @@ void DisplayHigh(void)
 	}
 }
 
-void breakhandler(int signum) {
+static void breakhandler(int signum) {
 	ProgramTerminated = 1;
 }
 
-void GameListCallback(GameRoom *gameRoom) {
+static void GameListCallback(GameRoom *gameRoom, void *arg) {
 	Nb = Nb + 1;
 	printf("%d> \'%s\' (ID=%d) %d/%d\n", Nb, gameRoom->listItem.name, gameRoom->listItem.id,
 			gameRoom->playerCount, gameRoom->maxPlayers);
 }
 
-void ChatListCallback(ChatRoom *chatRoom) {
+static void ChatListCallback(ChatRoom *chatRoom, void *arg) {
 	Nb = Nb + 1;
 	printf("%d> \'%s\' (ID=%d) %d client(s)\n", Nb, chatRoom->listItem.name, chatRoom->listItem.id,
 			chatRoom->userCount);
 }
 
-void PlayerListCallback(Client *client) {
+static void PlayerListCallback(Client *client, void *arg) {
 	Nb = Nb + 1;
 	printf("%d> \'%s\' ID=%d\n", Nb, client->listItem.name, client->listItem.id);
 }
@@ -938,7 +972,7 @@ void ServerCommand(char *cmd)
 		}
 		printf("\ncommand :->\n");
 		break;
-	case 1:	// Shutdowna
+	case 1:	// Shutdown
 		if (strcasecmp(cmd,"yes") == 0)
 			ProgramTerminated = 1;
 		else
@@ -970,13 +1004,13 @@ void ServerCommand(char *cmd)
 			case 'C':
 			case 'c':
 				Nb = 0;
-				ncServerEnumChatRooms(ChatListCallback);
+				ncServerEnumChatRooms(ChatListCallback, NULL);
 				printf("%d chat rooms listed.\n", Nb);
 				break;
 			case 'G':
 			case 'g':
 				Nb = 0;
-				ncServerEnumGameRooms(GameListCallback);
+				ncServerEnumGameRooms(GameListCallback, NULL);
 				printf("%d games listed.\n", Nb);
 				break;
 			case 'I':
@@ -986,8 +1020,9 @@ void ServerCommand(char *cmd)
 			case 'P':
 			case 'p':
 				Nb = 0;
-				ncServerEnumClients(PlayerListCallback);
+				ncServerEnumClients(PlayerListCallback, NULL);
 				printf("%d players listed.\n", Nb);
+				break;
 			default:
 				printf("error\n");
 				break;
@@ -1020,6 +1055,7 @@ void ServerCommand(char *cmd)
 			case 'p':
 				status = 5;
 				printf("Enter player\'s ID :\n");
+				break;
 			default:
 				printf("error\n");
 				status = 0;
@@ -1110,6 +1146,16 @@ void ServerCommand(char *cmd)
 	}
 }
 
+static void handleCommand(void *a)
+{
+	char buf[256];
+	int nchars = read(STDIN_FILENO, buf, sizeof(buf));
+	if (nchars > 1) {
+		buf[nchars - 1] = '\0';
+		ServerCommand(buf);
+	}
+}
+
 int main(int argc,char **argv)
 {
 	static unsigned next_nb_frames, next_nb_frames_hi;
@@ -1119,7 +1165,7 @@ int main(int argc,char **argv)
 	memset(&sigact, 0, sizeof(sigact));
 	sigact.sa_handler = breakhandler;
 	sigact.sa_flags = SA_RESTART;
-	sigaction(SIGINT,&sigact,NULL);
+	sigaction(SIGINT, &sigact, NULL);
 
 	printf("Starting TOY RACER server...\n");
 	ManageTime();
@@ -1129,11 +1175,13 @@ int main(int argc,char **argv)
 		printf("Can\'t initialize network !\n\n");
 		return 1;
 	}
+	pollReadSocket(STDIN_FILENO, handleCommand, NULL);
 
 	printf("TOY RACER server (version %d) started !\n\n", 9);
 	printf("\ncommand :->\n");
 	while (ProgramTerminated == 0)
 	{
+		pollWait(TotalStats.connectionCount == 0 ? 1000 : 10);	// wait 1 s when idle, 10 ms when active
 		ManageTime();
 		unsigned frames = NbFrames;
 		unsigned carry = 0xffffffff == NbFrames;
@@ -1160,26 +1208,8 @@ int main(int argc,char **argv)
 			}
 		}
 		ServerManage();
-
-		fd_set fdset;
-		FD_ZERO(&fdset);
-		FD_SET(STDIN_FILENO, &fdset);
-		struct timeval tv;
-		tv.tv_sec = 0;
-		tv.tv_usec = 0;
-		int rc = select(STDIN_FILENO + 1, &fdset, NULL, NULL, &tv);
-		if (rc < 0)
-			break;
-		if (rc > 0)
-		{
-			char buf[256];
-			int nchars = read(STDIN_FILENO, buf, sizeof(buf));
-			if (nchars > 1) {
-				buf[nchars - 1] = '\0';
-				ServerCommand(buf);
-			}
-		}
 	}
+	stopPollingSocket(STDIN_FILENO);
 	printf("TOY RACER server shutting down...\n");
 	ServerShutDown();
 	printf("OK, bye bye !\n");

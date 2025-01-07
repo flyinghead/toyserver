@@ -56,7 +56,7 @@ void ncServerDeleteInfoChat(int roomId)
 	do {
 		if (chatIdx >= NbInfoChat)
 		{
-		LAB_0804d1a2:
+		LAB_0804d1a2: // FIXME
 			for (; chatIdx < NbInfoChat; chatIdx++) {
 				memcpy(chatInfo, chatInfo + 1, sizeof(ChatInfo));
 				chatInfo++;
@@ -223,34 +223,33 @@ ChatRoom * ncChatRoomJoin(Client *client, int roomId)
 
 void ncChatRoomQuit(Client *client)
 {
-	NetMsg msg;
+	if (client == NULL || client->chatRoom == NULL)
+		return;
+	ChatRoom *chatRoom = client->chatRoom;
 	int idx;
-	ChatRoom *chatRoom;
-
-	if (client != NULL && client->chatRoom != NULL) {
-		chatRoom = client->chatRoom;
-		for (idx = 0; idx < (int)chatRoom->userCount; idx = idx + 1)
+	for (idx = 0; idx < (int)chatRoom->userCount; idx++)
+	{
+		if (client == chatRoom->clients[idx])
 		{
-			if (client == chatRoom->clients[idx]) {
-				if (ncChatRoomQuitCallback != NULL)
-					(*ncChatRoomQuitCallback)(client);
-				msg.msgId = chatRoom->listItem.id;
-				msg.msgType = 13;
-				msg.size = 12;
-				ncServerSendAllClientsTcpMsgExceptFrom(&msg, client->listItem.id);
-				msg.msgId = client->listItem.id;
-				msg.msgType = 11;
-				ncChatSendMsgExceptFrom(chatRoom, &msg, client->listItem.id);
-				client->chatRoom = NULL;
-				if (CliDisconnecting < client->status)
-					client->status = CliConnected;
-				chatRoom->userCount = chatRoom->userCount - 1;
-				break;
-			}
+			if (ncChatRoomQuitCallback != NULL)
+				(*ncChatRoomQuitCallback)(client);
+			NetMsg msg;
+			msg.msgId = chatRoom->listItem.id;
+			msg.msgType = 13;
+			msg.size = 12;
+			ncServerSendAllClientsTcpMsgExceptFrom(&msg, client->listItem.id);
+			msg.msgId = client->listItem.id;
+			msg.msgType = 11;
+			ncChatSendMsgExceptFrom(chatRoom, &msg, client->listItem.id);
+			client->chatRoom = NULL;
+			if (client->status >= CliConnected)
+				client->status = CliConnected;
+			chatRoom->userCount -= 1;
+			break;
 		}
-		for (; idx < (int)chatRoom->userCount; idx = idx + 1) {
-			chatRoom->clients[idx] = chatRoom->clients[idx + 1];
-		}
+	}
+	for (; idx < (int)chatRoom->userCount; idx = idx + 1) {
+		chatRoom->clients[idx] = chatRoom->clients[idx + 1];
 	}
 }
 
@@ -339,7 +338,7 @@ void ncChatRoomManage(void)
 		}
 		nextChatRoom = (ChatRoom *)chatRoom->listItem.next;
 		for (userIdx = 0; userIdx < (int)chatRoom->userCount; userIdx = userIdx + 1) {
-			if (chatRoom->clients[userIdx]->status < CliConnected) {
+			if (chatRoom->clients[userIdx]->status <= CliDisconnecting) {
 				ncChatRoomQuit(chatRoom->clients[userIdx]);
 				break;
 			}
@@ -349,6 +348,6 @@ void ncChatRoomManage(void)
 	} while( 1 );
 }
 
-void ncServerEnumChatRooms(void *callback) {
-	ncListEnum(&ChatRooms, callback);
+void ncServerEnumChatRooms(void (*callback)(ChatRoom *, void *), void *arg) {
+	ncListEnum(&ChatRooms, (ListEnumCallback)callback, arg);
 }

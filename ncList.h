@@ -8,6 +8,7 @@ struct ListItem {
 typedef struct ListItem ListItem;
 
 typedef void (*ListItemCallback)(ListItem *item);
+typedef void (*ListEnumCallback)(ListItem *item, void *arg);
 
 struct List {
     void *data;
@@ -30,4 +31,4 @@ int ncListCheckNameUsed(List *list, const char *name);
 ListItem *ncListAdd(List *list, const char *name);
 ListItem *ncListFindById(List *list, int id);
 int ncListDelete(List *list, ListItem *pDelete);
-void ncListEnum(List *list, ListItemCallback callback);
+void ncListEnum(List *list, ListEnumCallback callback, void *arg);

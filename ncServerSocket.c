@@ -3,12 +3,31 @@
 #include <assert.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <sys/select.h>
 
-Socket ncWaitingSockets[256];
-int ncNbWaitingSockets;
-int ncSocketListening = -1;
+static Socket ncWaitingSockets[256];
+static int ncNbWaitingSockets;
+static int ncSocketListening = -1;
 
-int (*ncServerLoginCallback_)(int, uint32_t, uint16_t, uint8_t *data);
+static int (*ncServerLoginCallback_)(int, uint32_t, uint16_t, uint8_t *data);
+
+static fd_set read_fd_set;
+static fd_set write_fd_set;
+static int max_fd_set = -1;
+struct SocketCallback
+{
+	void (*callback)(void *);
+	void *argument;
+};
+struct SocketCallback readCallbacks[1024];
+struct SocketCallback writeCallbacks[1024];
+
+static void listeningSocketCallback(void *a);
+static void waitingSocketCallback(void *arg);
+
+static void udpSocketCallback(void *a) {
+	ncGameManageUdp();
+}
 
 int ncServerStartListening(uint16_t tcpport)
 {
@@ -51,6 +70,7 @@ int ncServerStartListening(uint16_t tcpport)
 	ncLogPrintf(0, "Socket is now listening...");
 	ncNbWaitingSockets = 0;
 	ncSocketListening = fd;
+	pollReadSocket(fd, listeningSocketCallback, NULL);
 
 	return 1;
 }
@@ -67,33 +87,14 @@ void ncServerStopListening(void)
 	ncNbWaitingSockets = 0;
 }
 
-void ncServerManageConnections(void)
+static void listeningSocketCallback(void *a)
 {
-	if (ncSocketListening == -1)
-		return;
-
-	struct timeval tv;
-	tv.tv_sec = 0;
-	tv.tv_usec = 0;
-	fd_set fdset;
-	FD_ZERO(&fdset);
-	FD_SET(ncSocketListening, &fdset);
-	int selret = select(ncSocketListening + 1, &fdset, NULL, NULL, &tv);
-	if (selret == -1)
-	{
-		ncLogPrintf(0, "ERROR : ncServerManageConnections()->select() error ");
-		ncSocketError(ncSocketGetLastError());
-		return;
-	}
-	if (selret == 0)
-		return;
-
 	struct sockaddr_in client_addr;
 	socklen_t n = sizeof(client_addr);
 	int sockfd = accept(ncSocketListening, (struct sockaddr *)&client_addr, &n);
 	if (sockfd == -1)
 	{
-		ncLogPrintf(0, "ERROR : ncServerManageConnections()->accept() error ");
+		ncLogPrintf(0, "ERROR : listeningSocketCallback()->accept() error ");
 		ncSocketError(ncSocketGetLastError());
 		return;
 	}
@@ -117,6 +118,7 @@ void ncServerManageConnections(void)
 			socket->srcAddr = client_addr.sin_addr.s_addr;
 			ncLogPrintf(0, "Connection established from : %s , %d on socket %d",
 					saddr, ntohs(client_addr.sin_port), sockfd);
+			pollReadSocket(sockfd, waitingSocketCallback, socket);
 		}
 	}
 	else
@@ -171,42 +173,35 @@ void ncWaitingSocketMsgCallback(uint8_t *data, Socket *socket)
 	}
 }
 
-void ncServerManageLogin(void)
+static void waitingSocketCallback(void *arg)
 {
-	Socket *socket = &ncWaitingSockets[0];
-	for (int idx = 0; idx < ncNbWaitingSockets; idx++, socket++)
+	Socket *socket = (Socket *)arg;
+	int idx = socket - &ncWaitingSockets[0];
+	ssize_t ret = ncSocketBufReadMsg(socket, (void (*)(uint8_t*, void*))ncWaitingSocketMsgCallback, socket);
+	if (ret < 0)
 	{
-		if (socket->sockfd == -1) {
-			ncServerRemoveSocket(idx);
-			return;
+		ncSocketClose(&socket->sockfd);
+		ncServerRemoveSocket(idx);
+		return;
+	}
+	if (ret == 0)
+	{
+		int timeout = 0;
+		if (socket->loginExpected == 0)
+		{
+			if (TimerRef - socket->timer > 10000) {
+				ncLogPrintf(0, "!!! waitingSocketCallback() PING timeout on socket %d.", socket->sockfd);
+				timeout = 1;
+			}
 		}
-		ssize_t ret = ncSocketBufReadMsg(socket, (void (*)(uint8_t*, void*))ncWaitingSocketMsgCallback, socket);
-		if (ret < 0)
+		else if (TimerRef - socket->timer > 12000) {
+			ncLogPrintf(0, "!!! waitingSocketCallback() LOGIN timeout on socket %d.", socket->sockfd);
+			timeout = 1;
+		}
+		if (timeout)
 		{
 			ncSocketClose(&socket->sockfd);
 			ncServerRemoveSocket(idx);
-			return;
-		}
-		if (ret == 0)
-		{
-			int timeout = 0;
-			if (socket->loginExpected == 0)
-			{
-				if (TimerRef - socket->timer > 10000) {
-					ncLogPrintf(0, "!!! ncServerManageLogin() PING timeout on socket %d.", socket->sockfd);
-					timeout = 1;
-				}
-			}
-			else if (TimerRef - socket->timer > 12000) {
-				ncLogPrintf(0, "!!! ncServerManageLogin() LOGIN timeout on socket %d.", socket->sockfd);
-				timeout = 1;
-			}
-			if (timeout)
-			{
-				ncSocketClose(&socket->sockfd);
-				ncServerRemoveSocket(idx);
-				return;
-			}
 		}
 	}
 }
@@ -244,6 +239,7 @@ int ncServerSocketInit(uint16_t tcpPort, uint16_t udpPort)
 		return 0;
 	}
 	ncServerUdpPort = udpPort;
+	pollReadSocket(ncServerUdpSocket, udpSocketCallback, NULL);
 
 	return 1;
 }
@@ -389,31 +385,7 @@ void ncSocketClose(int *pSockfd)
 {
 	if (*pSockfd == -1)
 		return;
-	unsigned timeout = TimerRef + 500;
-	if (shutdown(*pSockfd, SHUT_WR) == -1)
-	{
-		if (ncSocketGetLastError() != ENOTCONN) {
-			ncLogPrintf(0, "ERROR : shutdown() failed: ");
-			ncSocketError(ncSocketGetLastError());
-		}
-	}
-	else
-	{
-		while (TimerRef < timeout)
-		{
-			ManageTime();
-			fd_set fdset;
-			FD_ZERO(&fdset);
-			FD_SET(*pSockfd, &fdset);
-			struct timeval tv;
-			tv.tv_sec = 0;
-			tv.tv_usec = 0;
-			uint8_t buf[128];
-			int ret = select(*pSockfd + 1, &fdset, NULL, NULL, &tv);
-			if (ret < 0 || (ret != 0 && recv(*pSockfd, buf, sizeof(buf), 0) <= 0))
-				break;
-		}
-	}
+	stopPollingSocket(*pSockfd);
 	close(*pSockfd);
 	ncLogPrintf(0, "Socket %d closed", *pSockfd);
 	*pSockfd = -1;
@@ -586,4 +558,54 @@ int ncSocketUdpSend(int sockfd, void *data, size_t len, in_addr_t dst_addr, uint
 		return 1;
 	}
 	return 0;
+}
+
+void pollReadSocket(int fd, void(*callback)(void*), void *argument)
+{
+	FD_SET(fd, &read_fd_set);
+	if (fd > max_fd_set)
+		max_fd_set = fd;
+	readCallbacks[fd].callback = callback;
+	readCallbacks[fd].argument = argument;
+}
+
+void pollWriteSocket(int fd, void(*callback)(void*), void *argument)
+{
+	FD_SET(fd, &write_fd_set);
+	if (fd > max_fd_set)
+		max_fd_set = fd;
+	writeCallbacks[fd].callback = callback;
+	writeCallbacks[fd].argument = argument;
+}
+
+void stopPollingSocket(int fd)
+{
+	FD_CLR(fd, &read_fd_set);
+	FD_CLR(fd, &write_fd_set);
+	// TODO decrease max_fd_set?
+	readCallbacks[fd].callback = NULL;
+	writeCallbacks[fd].callback = NULL;
+}
+
+// returns -1 on error, 0 if timeout, >0 number of fds with event
+int pollWait(int timeout)
+{
+	static fd_set rfd_set;
+	static fd_set wfd_set;
+	memcpy(&rfd_set, &read_fd_set, sizeof(rfd_set));
+	memcpy(&wfd_set, &write_fd_set, sizeof(wfd_set));
+	struct timeval tv;
+	tv.tv_sec = timeout / 1000;
+	tv.tv_usec = (timeout % 1000) * 1000;
+	int ret = select(max_fd_set + 1, &rfd_set, &wfd_set, NULL, &tv);
+	if (ret <= 0)
+		return ret;
+	for (int i = 0; i <= max_fd_set; i++)
+	{
+		if (FD_ISSET(i, &rfd_set) && readCallbacks[i].callback != NULL)
+			readCallbacks[i].callback(readCallbacks[i].argument);
+		if (FD_ISSET(i, &wfd_set) && writeCallbacks[i].callback != NULL)
+			writeCallbacks[i].callback(writeCallbacks[i].argument);
+	}
+	return ret;
 }

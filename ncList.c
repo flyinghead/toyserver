@@ -115,10 +115,14 @@ int ncListDelete(List *list, ListItem *pDelete)
 	return found;
 }
 
-void ncListEnum(List *list, void (*callback)(ListItem *item))
+void ncListEnum(List *list, ListEnumCallback callback, void *arg)
 {
 	if (callback == NULL)
 		return;
-	for (ListItem *pItem = (ListItem *)list->head; pItem != NULL; pItem = pItem->next)
-		callback(pItem);
+	for (ListItem *pItem = (ListItem *)list->head; pItem != NULL;)
+	{
+		ListItem *nextItem = pItem->next;
+		callback(pItem, arg);
+		pItem = nextItem;
+	}
 }
