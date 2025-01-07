@@ -42,7 +42,7 @@
 // 38		userId			kick user resp, ncGameStartLoading
 // 39		byte[4]			race rankings [1-4]
 // 40				268		broadcast message from server
-// 41		9				login failed?
+// 41		version			login failed: wrong client version
 // 42						?
 // 43		byte[4]			points won for each player
 
@@ -119,7 +119,7 @@ ssize_t ncSocketBufReadMsg(Socket *socket, void (*callback)(uint8_t *data, void 
 	uint8_t buf[20480];	// TODO way too much
 
 	ssize_t len = 0;
-	uint8_t *data = ncSocketRead(socket->sockfd, &len);
+	uint8_t *data = ncSocketRead(socket->fd, &len);
 	if (data != NULL && len != 0)
 	{
 		if (socket->recvBufSize != 0)
@@ -142,7 +142,7 @@ ssize_t ncSocketBufReadMsg(Socket *socket, void (*callback)(uint8_t *data, void 
 			uint32_t crc = ComputeMsgCRC(msg);
 			if (crc != msg->crc) {
 				ncLogPrintf(0,"Bad CRC in paquet from socket %d, msg ID = %d, Msg type = %d",
-						socket->sockfd, msg->msgId, msg->msgType);
+						socket->fd, msg->msgId, msg->msgType);
 				return -3;
 			}
 			callback(p,cbArg);

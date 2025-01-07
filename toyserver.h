@@ -10,21 +10,21 @@
 
 #include "netmsg.h"
 
-struct Socket {
-    int sockfd;
+#define SERVER_VERSION 9
+
+struct Socket
+{
+    int fd;
     int recvBufSize;
     uint8_t recvBuf[10240];	// TODO way too much
     int sendBufSize;
     uint8_t sendBuf[10240];	// TODO way too much
-    int timer;
-    int srcAddr;
-    short tcpPort;
-    short loginExpected;
 };
 typedef struct Socket Socket;
 
-struct ChatRoom {
-    struct ListItem listItem;
+struct ChatRoom
+{
+	ListItem listItem;
     uint16_t language;
     uint16_t userCount;
     time_t creationTime;
@@ -45,13 +45,10 @@ typedef enum ClientStatus {
     CliEnding=9
 } ClientStatus;
 
-struct Client {
-    struct ListItem listItem;
-    int sockfd;
-    int recvBufSize;
-    uint8_t recvBuf[10240];	// TODO way too much
-    int sendBufSize;
-    uint8_t sendBuf[10240];	// TODO way too much
+struct Client
+{
+	ListItem listItem;
+    Socket sock;
     in_addr_t ipAddress;
     uint16_t tcpPort;
     uint16_t udpPort;
@@ -60,16 +57,9 @@ struct Client {
     uint8_t unk5;
     struct ChatRoom *chatRoom;
     time_t connectTime;
-    int tcpRecvMsg;
-    int tcpSentMsg;
-    uint32_t timer;
-    int cumPingTime;
-    int pingRecv;
-    int unk9;
-    int lastUdpTimer;
-    int udpRecvMsg;
-    int udpSentMsg;
-    int udpRecvSequence;
+    time_t timer;
+    time_t lastUdpTimer;
+    uint32_t udpRecvSequence;
     int lostUdpPackets;
     uint16_t gameCount;
     uint16_t racesWon;
@@ -91,8 +81,9 @@ typedef enum eGameStatus {
     GameResults=3
 } eGameStatus;
 
-struct GameRoom {
-    struct ListItem listItem;
+struct GameRoom
+{
+	ListItem listItem;
     int raceId;
     time_t creationTime;
     uint8_t language;
@@ -149,7 +140,7 @@ extern int ncNbUdpSent;
 extern int ncNbUdpLost;
 extern int MaxUdpMsgSize;
 
-extern int TimerRef;
+extern time_t TimerRef;
 
 void ManageTime(void);
 void RefreshInfo(int roomId, int verbose);
@@ -276,7 +267,6 @@ void ncLogPrintf(int logType, char *format, ...);
 int ncServerStartListening(uint16_t tcpport);
 void ncServerStopListening(void);
 void ncServerRemoveSocket(int idx);
-void ncWaitingSocketMsgCallback(uint8_t *data, Socket *socket);
 void ncServerSetLoginCallback(void *callback);
 int ncServerSocketInit(uint16_t tcpPort, uint16_t udpPort);
 void ncServerSocketRelease(void);

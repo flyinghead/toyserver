@@ -5,7 +5,17 @@
 #include <unistd.h>
 #include <sys/select.h>
 
-static Socket ncWaitingSockets[256];
+struct WaitingSocket
+{
+	struct Socket sock;
+    time_t timer;
+    int srcAddr;
+    short tcpPort;
+    short loginExpected;
+};
+typedef struct WaitingSocket WaitingSocket;
+
+static WaitingSocket ncWaitingSockets[256];
 static int ncNbWaitingSockets;
 static int ncSocketListening = -1;
 
@@ -79,10 +89,10 @@ void ncServerStopListening(void)
 {
 	ncSocketClose(&ncSocketListening);
 	ncLogPrintf(0, "Listening Socket closed.");
-	Socket *socket = &ncWaitingSockets[0];
+	WaitingSocket *socket = &ncWaitingSockets[0];
 	for (int i = 0; i < ncNbWaitingSockets; i++, socket++) {
-		ncSocketTcpSendStandardMsg(socket->sockfd, 5, 0);
-		ncSocketClose(&socket->sockfd);
+		ncSocketTcpSendStandardMsg(socket->sock.fd, 5, 0);
+		ncSocketClose(&socket->sock.fd);
 	}
 	ncNbWaitingSockets = 0;
 }
@@ -108,10 +118,10 @@ static void listeningSocketCallback(void *a)
 		}
 		else
 		{
-			Socket *socket = &ncWaitingSockets[ncNbWaitingSockets];
+			WaitingSocket *socket = &ncWaitingSockets[ncNbWaitingSockets];
 			ncNbWaitingSockets++;
 			memset(socket, 0, sizeof(Socket));
-			socket->sockfd = sockfd;
+			socket->sock.fd = sockfd;
 			socket->timer = TimerRef;
 			socket->loginExpected = 0;
 			socket->tcpPort = client_addr.sin_port;
@@ -133,10 +143,10 @@ void ncServerRemoveSocket(int idx)
 {
 	ncNbWaitingSockets--;
 	for (int i = idx; i < ncNbWaitingSockets; i++)
-		memcpy(&ncWaitingSockets[i], &ncWaitingSockets[i + 1], sizeof(Socket));
+		memcpy(&ncWaitingSockets[i], &ncWaitingSockets[i + 1], sizeof(WaitingSocket));
 }
 
-void ncWaitingSocketMsgCallback(uint8_t *data, Socket *socket)
+static void ncWaitingSocketMsgCallback(uint8_t *data, WaitingSocket *socket)
 {
 	if (socket == NULL)
 		return;
@@ -144,43 +154,43 @@ void ncWaitingSocketMsgCallback(uint8_t *data, Socket *socket)
 	if (msgType == 1)
 	{
 		// Login
-		if (socket->sockfd != -1 && ncServerLoginCallback_ != NULL)
+		if (socket->sock.fd != -1 && ncServerLoginCallback_ != NULL)
 		{
-			int ret = (*ncServerLoginCallback_)(socket->sockfd, socket->srcAddr, socket->tcpPort, data);
+			int ret = (*ncServerLoginCallback_)(socket->sock.fd, socket->srcAddr, socket->tcpPort, data);
 			if (ret == 0)
-				ncSocketClose(&socket->sockfd);
-			socket->sockfd = -1;	// sockfd has been moved into the new Client
+				ncSocketClose(&socket->sock.fd);
+			socket->sock.fd = -1;	// sockfd has been moved into the new Client
 		}
 	}
-	else if (msgType == 2 && socket->sockfd != -1)
+	else if (msgType == 2 && socket->sock.fd != -1)
 	{
 		// Ping
-		unsigned n = TimerRef - socket->timer;
-		if (n <= 10000) {
+		time_t delta = TimerRef - socket->timer;
+		if (delta <= 10000) {
 			socket->loginExpected = 1;
 			socket->timer = TimerRef;
 		}
 		else
 		{
-			ncSocketTcpSendStandardMsg(socket->sockfd, 3, 0);
-			ncLogPrintf(0, "!!! PING rejected = %d on socket %d.", n, socket->sockfd);
-			ncSocketClose(&socket->sockfd);
+			ncSocketTcpSendStandardMsg(socket->sock.fd, 3, 0);
+			ncLogPrintf(0, "!!! PING rejected = %d on socket %d.", (int)delta, socket->sock.fd);
+			ncSocketClose(&socket->sock.fd);
 		}
 	}
 	else {
-		ncLogPrintf(0, "ERROR : bad message received on waiting socket %d !!!", socket->sockfd);
-		ncSocketClose(&socket->sockfd);
+		ncLogPrintf(0, "ERROR : bad message received on waiting socket %d !!!", socket->sock.fd);
+		ncSocketClose(&socket->sock.fd);
 	}
 }
 
 static void waitingSocketCallback(void *arg)
 {
-	Socket *socket = (Socket *)arg;
+	WaitingSocket *socket = (WaitingSocket *)arg;
 	int idx = socket - &ncWaitingSockets[0];
-	ssize_t ret = ncSocketBufReadMsg(socket, (void (*)(uint8_t*, void*))ncWaitingSocketMsgCallback, socket);
+	ssize_t ret = ncSocketBufReadMsg(&socket->sock, (void (*)(uint8_t*, void*))ncWaitingSocketMsgCallback, socket);
 	if (ret < 0)
 	{
-		ncSocketClose(&socket->sockfd);
+		ncSocketClose(&socket->sock.fd);
 		ncServerRemoveSocket(idx);
 		return;
 	}
@@ -190,17 +200,16 @@ static void waitingSocketCallback(void *arg)
 		if (socket->loginExpected == 0)
 		{
 			if (TimerRef - socket->timer > 10000) {
-				ncLogPrintf(0, "!!! waitingSocketCallback() PING timeout on socket %d.", socket->sockfd);
+				ncLogPrintf(0, "!!! waitingSocketCallback() PING timeout on socket %d.", socket->sock.fd);
 				timeout = 1;
 			}
 		}
 		else if (TimerRef - socket->timer > 12000) {
-			ncLogPrintf(0, "!!! waitingSocketCallback() LOGIN timeout on socket %d.", socket->sockfd);
+			ncLogPrintf(0, "!!! waitingSocketCallback() LOGIN timeout on socket %d.", socket->sock.fd);
 			timeout = 1;
 		}
-		if (timeout)
-		{
-			ncSocketClose(&socket->sockfd);
+		if (timeout) {
+			ncSocketClose(&socket->sock.fd);
 			ncServerRemoveSocket(idx);
 		}
 	}
@@ -453,17 +462,17 @@ uint8_t *ncSocketRead(int sockfd, ssize_t *len)
 
 int ncSocketTcpSend(Socket *socket, void *data, size_t len, int useSendBuffer)
 {
-	if (socket->sockfd == -1)
+	if (socket->fd == -1)
 		return 0;
 	struct timeval tv;
 	tv.tv_sec = 0;
 	tv.tv_usec = 0;
 	fd_set fdset;
 	FD_ZERO(&fdset);
-	FD_SET(socket->sockfd, &fdset);
-	int rc = select(socket->sockfd + 1,NULL,&fdset,NULL,&tv);
+	FD_SET(socket->fd, &fdset);
+	int rc = select(socket->fd + 1,NULL,&fdset,NULL,&tv);
 	if (rc == -1) {
-		ncLogPrintf(0,"ERROR : ncSocketTcpSend() failed -> select(%d) error ",socket->sockfd);
+		ncLogPrintf(0,"ERROR : ncSocketTcpSend() failed -> select(%d) error ",socket->fd);
 		ncSocketError(ncSocketGetLastError());
 		return 0;
 	}
@@ -475,15 +484,15 @@ int ncSocketTcpSend(Socket *socket, void *data, size_t len, int useSendBuffer)
 			socket->sendBufSize = len + socket->sendBufSize;
 			return 1;
 		}
-		ncLogPrintf(0, "ERROR : ncSocketTcpSend() failed -> send buffer FULL !!!", socket->sockfd);
+		ncLogPrintf(0, "ERROR : ncSocketTcpSend() failed -> send buffer FULL !!!", socket->fd);
 		return 0;
 	}
 	if (rc < 0)
 		return 0;
-	rc = send(socket->sockfd, data, len, MSG_NOSIGNAL);
+	rc = send(socket->fd, data, len, MSG_NOSIGNAL);
 	if (rc == -1)
 	{
-		ncLogPrintf(0,"ERROR : ncSocketTcpSend() failed -> send(%d) error ",socket->sockfd);
+		ncLogPrintf(0,"ERROR : ncSocketTcpSend() failed -> send(%d) error ",socket->fd);
 		ncSocketError(ncSocketGetLastError());
 		return 0;
 	}

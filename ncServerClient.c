@@ -23,8 +23,8 @@ void ncServerDisconnectClient(Client *client)
 		client->status = CliDisconnecting;
 		char *ip = ncGetAddrString(client->ipAddress);
 		ncLogPrintf(1,"DISCONNECT : Client \'%s\' (ID=%d) IP %s , %d, udp %d on socket %d.",
-				client->listItem.name, client->listItem.id, ip, ntohs(client->tcpPort), client->udpPort, client->sockfd);
-		ncSocketClose(&client->sockfd);
+				client->listItem.name, client->listItem.id, ip, ntohs(client->tcpPort), client->udpPort, client->sock.fd);
+		ncSocketClose(&client->sock.fd);
 	}
 }
 
@@ -34,15 +34,13 @@ int ncServerSendClientTcpMsg(Client *client, NetMsg *msg)
 		return 0;
 	if (client->status <= CliDisconnecting)
 		return 0;
-	// FIXME passing part of Client as Socket???
-	if (ncSocketTcpSendMsg((Socket *)&client->sockfd, msg, 1) == 0)
+	if (ncSocketTcpSendMsg(&client->sock, msg, 1) == 0)
 	{
 		ncLogPrintf(1, "ERROR sending TCP message to client \'%s\' (ID=%d).", client->listItem.name,
 				client->listItem.id);
 		ncServerDisconnectClient(client);
 		return 0;
 	}
-	client->tcpSentMsg++;
 	return 1;
 }
 
@@ -58,7 +56,6 @@ int ncServerSendClientUdpMsg(Client *client, NetMsg *msg)
 				client->listItem.id);
 		return 0;
 	}
-	client->udpSentMsg++;
 	return 1;
 }
 
@@ -87,91 +84,78 @@ int ncServerSendClientTcpStandardMsg(Client *client, short msgType, int msgId)
 
 int ncServerLoginCallback(int sockfd, uint32_t srcIp, uint16_t tcpPort, NetMsgT1 *msg)
 {
-	if (msg->unk1 == 9)
+	if (msg->clientVersion != SERVER_VERSION) {
+		ncSocketTcpSendStandardMsg(sockfd, 41, SERVER_VERSION);
+		return 0;
+	}
+	if (msg->head.msgId != 0) {
+		ncSocketTcpSendStandardMsg(sockfd, 4, 0);
+		return 0;
+	}
+	if (Clients.length >= Clients.capacity) {
+		ncLogPrintf(1, "!!! SERVER IS FULL connection from %s , %d on socket %d rejected !!!",
+				ncGetAddrString(srcIp), ntohs(tcpPort), sockfd);
+		ncSocketTcpSendStandardMsg(sockfd, 6, 0);
+	}
+	int bufsize = 0x4000;
+	if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &bufsize, 4) == -1)
 	{
-		if (msg->head.msgId == 0)
-		{
-			if (Clients.length < Clients.capacity)
-			{
-				int bufsize = 0x4000;
-				if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &bufsize, 4) == -1)
-				{
-					ncLogPrintf(1, "ERROR ncServerLoginCallback()-> setsockopt( SO_SNDBUF ) failed : ");
-					ncSocketError(ncSocketGetLastError());
-					ncServerSocketRelease();
-					return 0;
-				}
-				if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &bufsize, 4) == -1)
-				{
-					ncLogPrintf(1, "ERROR ncServerLoginCallback()-> setsockopt( SO_RCVBUF ) failed : ");
-					ncSocketError(ncSocketGetLastError());
-					ncServerSocketRelease();
-					return 0;
-				}
-				char userName [16];
-				strcpy(userName, msg->userName);
-				int i = 0;
-				while (ncListCheckNameUsed(&Clients, userName) != 0)
-				{
-					i = i + 1;
-					if (999 < i) {
-						ncSocketTcpSendStandardMsg(sockfd, 4, 0);
-						return 0;
-					}
-					if (i != 0)
-						// the game limits user names to 10 chars max
-						sprintf(userName, "%.10s_%03d", msg->userName, i);
-				}
-				Client *client = (Client *)ncListAdd(&Clients, userName);
-				if (client == NULL)
-					return 0;
-				client->sockfd = sockfd;
-				client->status = CliConnected;
-				client->ipAddress = srcIp;
-				client->tcpPort = tcpPort;
-				client->udpPort = msg->udpPort;
-				client->language = msg->language;
-				client->unk5 = msg->cli_unk5;
-				time(&client->connectTime);
-				client->tcpRecvMsg = 2;
-				client->tcpSentMsg = 1;
-				client->pingRecv = 0;
-				client->cumPingTime = 0;
-				client->timer = TimerRef + 5000;
-				const char *timestr = ncGetTimeString(client->connectTime);
-				char *addrstr = ncGetAddrString(client->ipAddress);
-				ncLogPrintf(1,"New client \'%s\' (ID=%d) from %s , %d, udp %d on socket %d at %s.",
-						client->listItem.name, client->listItem.id, addrstr, ntohs(tcpPort), client->udpPort, client->sockfd, timestr);
-				stopPollingSocket(sockfd);
-				pollReadSocket(sockfd, clientSocketCallback, client);
-				if (ncServerClientNewCallback != NULL)
-					(*ncServerClientNewCallback)(client);
-				strcpy(msg->userName, client->listItem.name);
-				msg->udpPort = ncServerUdpPort;
-				msg->head.msgId = client->listItem.id;
-				msg->udpTimeout = ncServerGetClientUdpTimeout();
-				ncServerGetClientTimers(&msg->dynPackPerSec, &msg->cmdPackPerSec);
-				if (ncServerSendClientTcpMsg(client, (NetMsg *)msg) != 0) {
-					ncChatSendList(client);
-					ncGameSendList(client);
-				}
-				return 1;
-			}
-			else
-			{
-				ncLogPrintf(1, "!!! SERVER IS FULL connection from %s , %d on socket %d rejected !!!",
-						ncGetAddrString(srcIp), ntohs(tcpPort), sockfd);
-				ncSocketTcpSendStandardMsg(sockfd, 6, 0);
-			}
-		}
-		else {
+		ncLogPrintf(1, "ERROR ncServerLoginCallback()-> setsockopt( SO_SNDBUF ) failed : ");
+		ncSocketError(ncSocketGetLastError());
+		ncServerSocketRelease();
+		return 0;
+	}
+	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &bufsize, 4) == -1)
+	{
+		ncLogPrintf(1, "ERROR ncServerLoginCallback()-> setsockopt( SO_RCVBUF ) failed : ");
+		ncSocketError(ncSocketGetLastError());
+		ncServerSocketRelease();
+		return 0;
+	}
+	char userName[16];
+	strcpy(userName, msg->userName);
+	int i = 0;
+	while (ncListCheckNameUsed(&Clients, userName) != 0)
+	{
+		i = i + 1;
+		if (999 < i) {
 			ncSocketTcpSendStandardMsg(sockfd, 4, 0);
+			return 0;
 		}
+		if (i != 0)
+			// the game limits user names to 10 chars max
+			sprintf(userName, "%.10s_%03d", msg->userName, i);
 	}
-	else {
-		ncSocketTcpSendStandardMsg(sockfd, 41, 9);
+	Client *client = (Client *)ncListAdd(&Clients, userName);
+	if (client == NULL)
+		return 0;
+	client->sock.fd = sockfd;
+	client->status = CliConnected;
+	client->ipAddress = srcIp;
+	client->tcpPort = tcpPort;
+	client->udpPort = msg->udpPort;
+	client->language = msg->language;
+	client->unk5 = msg->cli_unk5;
+	time(&client->connectTime);
+	client->timer = TimerRef + 5000;
+	const char *timestr = ncGetTimeString(client->connectTime);
+	char *addrstr = ncGetAddrString(client->ipAddress);
+	ncLogPrintf(1,"New client \'%s\' (ID=%d) from %s , %d, udp %d on socket %d at %s.",
+			client->listItem.name, client->listItem.id, addrstr, ntohs(tcpPort), client->udpPort, sockfd, timestr);
+	stopPollingSocket(sockfd);
+	pollReadSocket(sockfd, clientSocketCallback, client);
+	if (ncServerClientNewCallback != NULL)
+		(*ncServerClientNewCallback)(client);
+	strcpy(msg->userName, client->listItem.name);
+	msg->udpPort = ncServerUdpPort;
+	msg->head.msgId = client->listItem.id;
+	msg->udpTimeout = ncServerGetClientUdpTimeout();
+	ncServerGetClientTimers(&msg->dynPackPerSec, &msg->cmdPackPerSec);
+	if (ncServerSendClientTcpMsg(client, (NetMsg *)msg) != 0) {
+		ncChatSendList(client);
+		ncGameSendList(client);
 	}
-	return 0;
+	return 1;
 }
 
 int ncServerClientInit(void) {
@@ -221,13 +205,13 @@ static void serverManageClient(Client *client, void *arg)
 		 if (client->chatRoom == NULL)
 			 ncServerRemoveClient(client);
 	}
-	else if (client->sendBufSize == 0)
+	else if (client->sock.sendBufSize == 0)
 	{
-		if (client->sockfd != -1 && client->timer != 0 && client->timer < TimerRef)
+		if (client->sock.fd != -1 && client->timer != 0 && client->timer < TimerRef)
 		{
 			client->timer = 0;
 			NetMsgT2 pingMsg;
-			pingMsg.timer = TimerRef;
+			pingMsg.timer = (uint32_t)TimerRef;
 			pingMsg.head.size = 16;
 			pingMsg.head.msgType = 2;
 			pingMsg.head.msgId = 0;
@@ -243,35 +227,34 @@ void ncServerManageClients(void) {
 static void clientSocketCallback(void *arg)
 {
 	Client *client = (Client *)arg;
-	// FIXME Client to Socket hack
-	ssize_t len = ncSocketBufReadMsg((Socket *)&client->sockfd, (void (*)(uint8_t *, void *))ncServerClientReadMsgCallback, client);
+	ssize_t len = ncSocketBufReadMsg(&client->sock, (void (*)(uint8_t *, void *))ncServerClientReadMsgCallback, client);
 	if (len < 0) {
 		ncServerDisconnectClient(client);
 	}
-	else if (client->status >= CliConnected && client->sendBufSize != 0 && client->sockfd != -1)
+	else if (client->status >= CliConnected && client->sock.sendBufSize != 0 && client->sock.fd != -1)
 	{
 		struct timeval tv;
 		tv.tv_sec = 0;
 		tv.tv_usec = 0;
 		fd_set fdset;
 		FD_ZERO(&fdset);
-		FD_SET(client->sockfd, &fdset);
-		ssize_t rc = select(client->sockfd + 1, NULL, &fdset, NULL, &tv);
+		FD_SET(client->sock.fd, &fdset);
+		ssize_t rc = select(client->sock.fd + 1, NULL, &fdset, NULL, &tv);
 		if (rc == -1) {
 			ncServerDisconnectClient(client);
 		}
 		else if (rc > 0)
 		{
-			rc = send(client->sockfd, client->sendBuf, client->sendBufSize, MSG_NOSIGNAL);
+			rc = send(client->sock.fd, client->sock.sendBuf, client->sock.sendBufSize, MSG_NOSIGNAL);
 			if (rc == -1)
 			{
 				ncLogPrintf(0, "ERROR : ncServerManageClients() : Can\'t send buffer data -> send(%d) error ",
-						client->sockfd);
+						client->sock.fd);
 				ncSocketError(ncSocketGetLastError());
 				ncServerDisconnectClient(client);
 			}
-			else if (rc == client->sendBufSize) {
-				client->sendBufSize = 0;
+			else if (rc == client->sock.sendBufSize) {
+				client->sock.sendBufSize = 0;
 				ncLogPrintf(0, "!!! SUCCESS !!! ncServerManageClients() : buffered data successfully sent !");
 			}
 			else

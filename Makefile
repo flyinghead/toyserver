@@ -3,7 +3,7 @@ CFLAGS = -g -Wall -fsanitize=address -static-libasan
 
 all: toyserver
 
-toyserver: $(SRC) toyserver.h
+toyserver: $(SRC) globals.h ncCRC32.h ncList.h netmsg.h toyserver.h
 	$(CC) $(CFLAGS) -o $@ $(SRC)
 
 clean:

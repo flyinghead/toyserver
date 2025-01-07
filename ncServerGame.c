@@ -256,7 +256,7 @@ void ncGameCheckLoad(GameRoom *gameRoom)
 	for (int i = 0; i < (int)gameRoom->playerCount; i++)
 	{
 		gameRoom->players[i]->status = CliPlaying;
-		gameRoom->players[i]->gameCount++;
+		gameRoom->players[i]->gameCount += 1;
 		gameRoom->players[i]->lastUdpTimer = 0;
 		ncServerSendClientTcpMsg(gameRoom->players[i], &msg);
 	}
@@ -309,9 +309,6 @@ void ncGameReadUdpMsgCallback(NetMsgT36 *msg)
 	Client *client = ncClientFindById(msg->head.msgId);
 	if (client == NULL || client->status <= CliDisconnecting)
 		return;
-	client->udpRecvMsg++;
-	if (client->lastUdpTimer != 0)
-		client->unk9 += (TimerRef - client->lastUdpTimer);
 	client->lastUdpTimer = TimerRef;
 	if (client->udpRecvSequence != 0 && msg->udpSequence - client->udpRecvSequence > 1)
 	{
@@ -361,8 +358,11 @@ static void gameRoomManage(GameRoom *gameRoom, void *arg)
 		for (int i = 0; i < (int)gameRoom->playerCount; i++)
 		{
 			Client *client = gameRoom->players[i];
-			if (Udp_Timeout != 0 && client->status == CliPlaying
-					&& client->lastUdpTimer != 0 && Udp_Timeout < TimerRef - client->lastUdpTimer) {	// FIXME will time out everyone when TimerRef rolls over?
+			if (Udp_Timeout != 0
+					&& client->status == CliPlaying
+					&& client->lastUdpTimer != 0
+					&& TimerRef - client->lastUdpTimer > Udp_Timeout)
+			{
 				ncLogPrintf(1, "!!!TIMEOUT : client \'%s\' (ID=%d) UDP timeout !", client->listItem.name,
 						client->listItem.id);
 				ncServerDisconnectClient(client);

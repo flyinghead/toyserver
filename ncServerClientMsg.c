@@ -4,11 +4,8 @@ int ncNbTcpReceived;
 
 void ncServerClientReadPingMessage(Client *client, NetMsgT2 *msg)
 {
-	if (msg->head.msgId == 0)
-	{
-		client->pingRecv = client->pingRecv + 1;
-		client->cumPingTime = client->cumPingTime + (TimerRef - msg->timer);
-		if (client->status < CliLoading)
+	if (msg->head.msgId == 0) {
+		if (client->status <= CliReady)
 			client->timer = TimerRef + 5000;
 	}
 	else {
@@ -85,7 +82,6 @@ void ncServerClientReadMsgCallback(NetMsg *msg, Client *client)
 	if (client->status <= CliDisconnecting)
 		return;
 
-	client->tcpRecvMsg = client->tcpRecvMsg + 1;
 	switch (msg->msgType)
 	{
 	case 2:

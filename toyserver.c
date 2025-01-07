@@ -29,12 +29,11 @@ struct BestLap {
 typedef struct BestLap BestLap;
 static BestLap TrBestLaps[14][8];
 
-static int FirstTimer;
+static time_t FirstTimer;
 static int ToyServerFPS;
 static int MinFps = 99999999;
 static int MaxFps;
-static unsigned NbFrames;
-static unsigned NbFrames_hi;
+static int64_t NbFrames;
 
 static uint16_t Tcp_Port = 2048;
 static uint16_t Udp_Port = 2049;
@@ -669,7 +668,7 @@ int ServerStart(void)
 
 void ServerManage(void)
 {
-	static int lastrefresh;
+	static time_t lastrefresh;
 
 	ncChatRoomManage();
 	ncGameRoomManage();
@@ -761,8 +760,8 @@ void DisplayStats(void)
 			timestr, TotalStats.totalChats);
 	printf("\nTCP sent:%d, recv:%d, UDP sent:%d, recv:%d, lost:%d, max UDP size:%d\n\n", ncNbTcpSent,
 			ncNbTcpReceived, ncNbUdpSent, ncNbUdpReceived, ncNbUdpLost, MaxUdpMsgSize);
-	if (TimerRef - FirstTimer != 0) {
-		int avgFps = (long long)NbFrames * 1000 / (TimerRef - FirstTimer);
+	if (TimerRef > FirstTimer) {
+		unsigned avgFps = (unsigned)(NbFrames * 1000 / (TimerRef - FirstTimer));
 		printf("FPS : curr=%u min=%u max=%u avg=%u\n\n", ToyServerFPS, MinFps, MaxFps, avgFps);
 	}
 }
@@ -1158,8 +1157,8 @@ static void handleCommand(void *a)
 
 int main(int argc,char **argv)
 {
-	static unsigned next_nb_frames, next_nb_frames_hi;
-	static int last_timer;
+	static int64_t next_nb_frames;
+	static time_t last_timer;
 
 	struct sigaction sigact;
 	memset(&sigact, 0, sizeof(sigact));
@@ -1177,33 +1176,26 @@ int main(int argc,char **argv)
 	}
 	pollReadSocket(STDIN_FILENO, handleCommand, NULL);
 
-	printf("TOY RACER server (version %d) started !\n\n", 9);
+	printf("TOY RACER server (version %d) started !\n\n", SERVER_VERSION);
 	printf("\ncommand :->\n");
 	while (ProgramTerminated == 0)
 	{
 		pollWait(TotalStats.connectionCount == 0 ? 1000 : 10);	// wait 1 s when idle, 10 ms when active
 		ManageTime();
-		unsigned frames = NbFrames;
-		unsigned carry = 0xffffffff == NbFrames;
-		NbFrames++;
-		NbFrames_hi = NbFrames_hi + carry;
-		if ((next_nb_frames | next_nb_frames_hi) == 0)
-		{
-			next_nb_frames = frames + 1001;
-			next_nb_frames_hi = NbFrames_hi + (0xfffffc17 < NbFrames);
+		NbFrames += 1;
+		if (next_nb_frames == 0) {
+			next_nb_frames = NbFrames + 1000;
 			last_timer = TimerRef;
 		}
-		else if (next_nb_frames_hi <= NbFrames_hi
-				&& (next_nb_frames_hi != NbFrames_hi || next_nb_frames <= NbFrames))
+		else if (next_nb_frames <= NbFrames)
 		{
 			next_nb_frames = 0;
-			next_nb_frames_hi = 0;
-			if (TimerRef - last_timer != 0)
+			if (TimerRef > last_timer)
 			{
-				ToyServerFPS = (int)(1000000ull / (TimerRef - last_timer));
+				ToyServerFPS = (int)(1000000 / (TimerRef - last_timer));
 				if (ToyServerFPS < MinFps)
 					MinFps = ToyServerFPS;
-				if (MaxFps < ToyServerFPS)
+				if (ToyServerFPS > MaxFps)
 					MaxFps = ToyServerFPS;
 			}
 		}

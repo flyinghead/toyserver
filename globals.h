@@ -1,4 +1,4 @@
-int TimerRef;
+time_t TimerRef;
 
 int MaxNbGames = 512;
 int MaxNbPlayers = 1024;

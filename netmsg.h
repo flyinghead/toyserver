@@ -13,7 +13,7 @@ typedef struct NetMsg NetMsg;
 struct NetMsgT1 {
     struct NetMsg head;
     char userName[16];
-    int unk1;
+    int clientVersion;
     uint16_t udpPort;
     uint8_t language;
     uint8_t cli_unk5;
@@ -26,7 +26,7 @@ typedef struct NetMsgT1 NetMsgT1;
 // Ping
 struct NetMsgT2 {
     struct NetMsg head;
-    int timer;
+    uint32_t timer;
 };
 typedef struct NetMsgT2 NetMsgT2;
 
@@ -193,7 +193,7 @@ typedef struct NetMsgT34 NetMsgT34;
 struct NetMsgT36 {
     struct NetMsg head;
     int raceId;
-    int udpSequence;
+    uint32_t udpSequence;
     // data...
 };
 typedef struct NetMsgT36 NetMsgT36;
