@@ -671,9 +671,9 @@ void ServerManage(void)
 {
 	static int lastrefresh;
 
-	ncServerManageClients();
 	ncChatRoomManage();
-	ncGameRoomManage();	// FIXME there's some timeout management there
+	ncGameRoomManage();
+	ncServerManageClients();
 	if (lastrefresh == 0 || lastrefresh < TimerRef)
 	{
 		lastrefresh = TimerRef + 1000;

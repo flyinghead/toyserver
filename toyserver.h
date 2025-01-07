@@ -195,7 +195,6 @@ ChatRoom *ncServerGetChatById(int roomId);
 int ncServerGetNbInfoChats(void);
 ChatInfo *ncServerGetInfoChatIndexPtr(int chatIdx);
 int ncServerCreateInfoChat(ChatInfo *srcChatInfo);
-void ncServerDeleteInfoChat(int roomId);
 int ncChatInfoJoin(Client *client, int roomId);
 int ncChatRoomAllocate(int maxChatRooms);
 void ncChatRoomRelease(void);

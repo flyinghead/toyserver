@@ -1,15 +1,15 @@
 #include "toyserver.h"
 #include <time.h>
 
-List ChatRooms;
-ChatInfo InfoChats[50];
-int NbInfoChat;
+static List ChatRooms;
+static ChatInfo InfoChats[50];
+static int NbInfoChat;
 
-void (*ncChatRoomJoinCallback)(ChatRoom *);
-void (*ncChatRoomQuitCallback)(Client *);
-void (*ncChatRoomNewCallback)(ChatRoom *);
+static void (*ncChatRoomJoinCallback)(ChatRoom *);
+static void (*ncChatRoomQuitCallback)(Client *);
+static void (*ncChatRoomNewCallback)(ChatRoom *);
 
-ChatRoom * ncServerGetChatById(int roomId)
+ChatRoom *ncServerGetChatById(int roomId)
 {
 	ChatRoom *chatRoom;
 
@@ -21,7 +21,7 @@ int ncServerGetNbInfoChats(void) {
 	return NbInfoChat;
 }
 
-ChatInfo * ncServerGetInfoChatIndexPtr(int chatIdx) {
+ChatInfo *ncServerGetInfoChatIndexPtr(int chatIdx) {
 	return InfoChats + chatIdx;
 }
 
@@ -47,31 +47,6 @@ int ncServerCreateInfoChat(ChatInfo *srcChatInfo)
 	NbInfoChat = NbInfoChat + 1;
 
 	return 1;
-}
-
-void ncServerDeleteInfoChat(int roomId)
-{
-	ChatInfo *chatInfo = &InfoChats[0];
-	int chatIdx = 0;
-	do {
-		if (chatIdx >= NbInfoChat)
-		{
-		LAB_0804d1a2: // FIXME
-			for (; chatIdx < NbInfoChat; chatIdx++) {
-				memcpy(chatInfo, chatInfo + 1, sizeof(ChatInfo));
-				chatInfo++;
-			}
-			return;
-		}
-		if (chatInfo->roomId == roomId)
-		{
-			ncServerSendAllClientsStandardTcpMsg(17, chatInfo->roomId);
-			NbInfoChat--;
-			goto LAB_0804d1a2;
-		}
-		chatIdx++;
-		chatInfo++;
-	} while( 1 );
 }
 
 int ncChatInfoJoin(Client *client, int roomId)
@@ -189,7 +164,7 @@ void ncChatSendInfos(Client *client, int roomId)
 	}
 }
 
-ChatRoom * ncChatRoomJoin(Client *client, int roomId)
+ChatRoom *ncChatRoomJoin(Client *client, int roomId)
 {
 	NetMsgT20 msg10;
 	NetMsg msg12;
@@ -323,29 +298,26 @@ void ncChatSendList(Client *client)
 		ncServerSendClientTcpMsg(client, &msg.head);
 }
 
-void ncChatRoomManage(void)
+static void chatRoomManage(ChatRoom *chatRoom, void *arg)
 {
-	int userIdx;
-	ChatRoom *chatRoom;
-	ChatRoom *nextChatRoom;
-
-	chatRoom = (ChatRoom *)ChatRooms.head;
-	nextChatRoom = chatRoom;
+	int repeat;
 	do {
-		chatRoom = nextChatRoom;
-		if (chatRoom == NULL) {
-			return;
-		}
-		nextChatRoom = (ChatRoom *)chatRoom->listItem.next;
-		for (userIdx = 0; userIdx < (int)chatRoom->userCount; userIdx = userIdx + 1) {
-			if (chatRoom->clients[userIdx]->status <= CliDisconnecting) {
-				ncChatRoomQuit(chatRoom->clients[userIdx]);
+		repeat = 0;
+		for (int i = 0; i < (int)chatRoom->userCount; i++)
+		{
+			if (chatRoom->clients[i]->status <= CliDisconnecting) {
+				ncChatRoomQuit(chatRoom->clients[i]);
+				repeat = 1;
 				break;
 			}
 		}
-		if (chatRoom->userCount == 0)
-			ncChatRoomDelete(chatRoom);
-	} while( 1 );
+	} while (repeat != 0);
+	if (chatRoom->userCount == 0)
+		ncChatRoomDelete(chatRoom);
+}
+
+void ncChatRoomManage(void) {
+	ncServerEnumChatRooms(chatRoomManage, NULL);
 }
 
 void ncServerEnumChatRooms(void (*callback)(ChatRoom *, void *), void *arg) {

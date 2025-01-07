@@ -215,19 +215,29 @@ void ncServerSendAllClientsTcpMsgExceptFromAndRoom(NetMsg *msg, int clientId, Ch
 	}
 }
 
-// FIXME to delete. But there's some logic left that needs to go somewhere
-void ncServerManageClients(void)
+static void serverManageClient(Client *client, void *arg)
 {
-	Client *client = (Client *)Clients.head;
-	while (client != NULL)
-	{
-		Client *nextClient = (Client *)client->listItem.next;
-		if (client->status <= CliDisconnecting) {
-			if (client->chatRoom == NULL)
-				ncServerRemoveClient(client);
-		}
-		client = nextClient;
+	if (client->status <= CliDisconnecting) {
+		 if (client->chatRoom == NULL)
+			 ncServerRemoveClient(client);
 	}
+	else if (client->sendBufSize == 0)
+	{
+		if (client->sockfd != -1 && client->timer != 0 && client->timer < TimerRef)
+		{
+			client->timer = 0;
+			NetMsgT2 pingMsg;
+			pingMsg.timer = TimerRef;
+			pingMsg.head.size = 16;
+			pingMsg.head.msgType = 2;
+			pingMsg.head.msgId = 0;
+			ncServerSendClientTcpMsg(client, (NetMsg *)&pingMsg);
+		}
+	}
+}
+
+void ncServerManageClients(void) {
+	ncServerEnumClients(serverManageClient, NULL);
 }
 
 static void clientSocketCallback(void *arg)
@@ -238,53 +248,37 @@ static void clientSocketCallback(void *arg)
 	if (len < 0) {
 		ncServerDisconnectClient(client);
 	}
-	else if (client->status >= CliConnected)		// FIXME should this go elsewhere? won't be run if nothing is received from the sock
+	else if (client->status >= CliConnected && client->sendBufSize != 0 && client->sockfd != -1)
 	{
-		if (client->sendBufSize == 0 || client->sockfd == -1)	// FIXME if client->sockfd == -1, we can't send a message...
-		{
-			if (client->timer != 0 && client->timer < TimerRef)
-			{
-				client->timer = 0;
-				NetMsgT2 pingMsg;
-				pingMsg.timer = TimerRef;
-				pingMsg.head.size = 16;
-				pingMsg.head.msgType = 2;
-				pingMsg.head.msgId = 0;
-				ncServerSendClientTcpMsg(client, (NetMsg *)&pingMsg);
-			}
+		struct timeval tv;
+		tv.tv_sec = 0;
+		tv.tv_usec = 0;
+		fd_set fdset;
+		FD_ZERO(&fdset);
+		FD_SET(client->sockfd, &fdset);
+		ssize_t rc = select(client->sockfd + 1, NULL, &fdset, NULL, &tv);
+		if (rc == -1) {
+			ncServerDisconnectClient(client);
 		}
-		else
+		else if (rc > 0)
 		{
-			struct timeval tv;
-			tv.tv_sec = 0;
-			tv.tv_usec = 0;
-			fd_set fdset;
-			FD_ZERO(&fdset);
-			FD_SET(client->sockfd, &fdset);
-			ssize_t rc = select(client->sockfd + 1, NULL, &fdset, NULL, &tv);
-			if (rc == -1) {
+			rc = send(client->sockfd, client->sendBuf, client->sendBufSize, MSG_NOSIGNAL);
+			if (rc == -1)
+			{
+				ncLogPrintf(0, "ERROR : ncServerManageClients() : Can\'t send buffer data -> send(%d) error ",
+						client->sockfd);
+				ncSocketError(ncSocketGetLastError());
 				ncServerDisconnectClient(client);
 			}
-			else if (rc > 0)
+			else if (rc == client->sendBufSize) {
+				client->sendBufSize = 0;
+				ncLogPrintf(0, "!!! SUCCESS !!! ncServerManageClients() : buffered data successfully sent !");
+			}
+			else
 			{
-				rc = send(client->sockfd, client->sendBuf, client->sendBufSize, MSG_NOSIGNAL);
-				if (rc == -1)
-				{
-					ncLogPrintf(0, "ERROR : ncServerManageClients() : Can\'t send buffer data -> send(%d) error ",
-							client->sockfd);
-					ncSocketError(ncSocketGetLastError());
-					ncServerDisconnectClient(client);
-				}
-				else if (rc == client->sendBufSize) {
-					client->sendBufSize = 0;
-					ncLogPrintf(0, "!!! SUCCESS !!! ncServerManageClients() : buffered data successfully sent !");
-				}
-				else
-				{
-					ncLogPrintf(0, "ERROR : ncServerManageClients() : Can\'t send buffer data -> not all data sent !");
-					ncSocketError(ncSocketGetLastError());
-					ncServerDisconnectClient(client);
-				}
+				ncLogPrintf(0, "ERROR : ncServerManageClients() : Can\'t send buffer data -> not all data sent !");
+				ncSocketError(ncSocketGetLastError());
+				ncServerDisconnectClient(client);
 			}
 		}
 	}

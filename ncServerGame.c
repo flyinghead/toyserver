@@ -1,14 +1,14 @@
 #include "toyserver.h"
 #include <time.h>
 
-List GameRooms;
-int Udp_Timeout = 5000;
-int LastRaceID = 1;
+static List GameRooms;
+static int Udp_Timeout = 5000;
+static int LastRaceID = 1;
 
-void (*ncGameRoomNewCallback)(GameRoom *);
-void (*ncGameRoomJoinCallback)(GameRoom *);
-void (*ncServerGameResultCallback)(GameRoom *);
-void (*ncGameRoomQuitCallback)(Client *);
+static void (*ncGameRoomNewCallback)(GameRoom *);
+static void (*ncGameRoomJoinCallback)(GameRoom *);
+static void (*ncServerGameResultCallback)(GameRoom *);
+static void (*ncGameRoomQuitCallback)(Client *);
 
 GameRoom *ncServerGetGameById(int gameId) {
 	return (GameRoom *)ncListFindById(&GameRooms, gameId);
@@ -353,37 +353,38 @@ void ncGameCheckEnd(GameRoom *gameRoom)
 	}
 }
 
-void ncGameRoomManage(void)
+static void gameRoomManage(GameRoom *gameRoom, void *arg)
 {
-	GameRoom *gameRoom = (GameRoom *)GameRooms.head;
-	GameRoom *nextGameRoom = gameRoom;
-	for (;;)
-	{
-		gameRoom = nextGameRoom;
-		if (gameRoom == NULL)
-			return;
-		nextGameRoom = (GameRoom *)gameRoom->listItem.next;
-		for (int idx = 0; idx < (int)gameRoom->playerCount; idx++)
+	int repeat;
+	do {
+		repeat = 0;
+		for (int i = 0; i < (int)gameRoom->playerCount; i++)
 		{
-			Client *client = gameRoom->players[idx];
+			Client *client = gameRoom->players[i];
 			if (Udp_Timeout != 0 && client->status == CliPlaying
 					&& client->lastUdpTimer != 0 && Udp_Timeout < TimerRef - client->lastUdpTimer) {	// FIXME will time out everyone when TimerRef rolls over?
 				ncLogPrintf(1, "!!!TIMEOUT : client \'%s\' (ID=%d) UDP timeout !", client->listItem.name,
 						client->listItem.id);
 				ncServerDisconnectClient(client);
 			}
-			if (client->status <= CliDisconnecting) {
-				ncGameRoomQuit(gameRoom->players[idx]);
+			if (client->status <= CliDisconnecting)
+			{
+				ncGameRoomQuit(gameRoom->players[i]);
+				repeat = 1;
 				break;
 			}
 		}
-		if (gameRoom->playerCount == 0)
-			ncGameRoomDelete(gameRoom);
-		else if (gameRoom->status == GameLoading)
-			ncGameCheckLoad(gameRoom);
-		else if (gameRoom->status == GameResults)
-			ncGameCheckEnd(gameRoom);
-	}
+	} while (repeat != 0);
+	if (gameRoom->playerCount == 0)
+		ncGameRoomDelete(gameRoom);
+	else if (gameRoom->status == GameLoading)
+		ncGameCheckLoad(gameRoom);
+	else if (gameRoom->status == GameResults)
+		ncGameCheckEnd(gameRoom);
+}
+
+void ncGameRoomManage(void) {
+	ncServerEnumGameRooms(gameRoomManage, NULL);
 }
 
 void ncGameSetParams(Client *client, NetMsgT27 *msg)
