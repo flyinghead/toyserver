@@ -264,11 +264,10 @@ void ncGameCheckLoad(GameRoom *gameRoom)
 	ncGameStatusChanged(gameRoom);
 }
 
-// FIXME ghidra won't allow to use GameRoom instead of ChatRoom -> expect errors
 void ncGameReadInGameMessage(Client *client, NetMsgT36 *msg)
 {
 	GameRoom *gameRoom = (GameRoom *)client->chatRoom;
-	if ((uint32_t)MaxUdpMsgSize < msg->head.size)
+	if ((unsigned)MaxUdpMsgSize < msg->head.size)
 		MaxUdpMsgSize = msg->head.size;
 	NetMsgT36 lmsg;
 	if (gameRoom == NULL || gameRoom->status != GameRunning)

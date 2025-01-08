@@ -4,16 +4,37 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/socket.h>
-#include <sys/select.h>
 
 #include "globals.h"
 
+static int CheckInfoChatFile(char *fileName);
+static void DisplayInfoInfo(int roomId);
+
 static ChatInfo tmpInfoChat;
 
-static Stats TotalStats;
-static Stats DailyStats;
+struct Stats
+{
+    uint32_t totalConnections;
+    uint32_t maxConnections;
+    time_t maxConnectionsTime;
+    uint32_t connectionCount;
+    uint32_t totalGames;
+    uint32_t maxGames;
+    time_t maxGamesTimes;
+    uint32_t gameCount;
+    uint32_t totalChats;
+    uint32_t maxChats;
+    time_t maxChatsTime;
+    uint32_t chatCount;
+    time_t connectionTime;
+    time_t gameTime;
+    time_t chatTime;
+};
+static struct Stats TotalStats;
+static struct Stats DailyStats;
 
-struct HighScores {
+struct HighScores
+{
 	int times[8];
 	char RacerNames[8][16];
 	uint8_t RacerCars[8];
@@ -22,12 +43,12 @@ struct HighScores {
 typedef struct HighScores HighScores;
 static HighScores TrHighScores;
 
-struct BestLap {
+struct BestLap
+{
     int time;
     char name[16];
 };
-typedef struct BestLap BestLap;
-static BestLap TrBestLaps[14][8];
+static struct BestLap TrBestLaps[8][14];
 
 static time_t FirstTimer;
 static int ToyServerFPS;
@@ -39,21 +60,21 @@ static uint16_t Tcp_Port = 2048;
 static uint16_t Udp_Port = 2049;
 static int ClientUdpTimeout = 7000;
 static int UdpTimeout = 5000;
-static short NbCommandPaquetsPerSec = 8;
-static short NbDynamixPaquetsPerSec = 6;
+static uint16_t NbCommandPaquetsPerSec = 8;
+static uint16_t NbDynamixPaquetsPerSec = 6;
 
 static int ProgramTerminated;
 static int LastDailyDay;
 static int Nb;
 
-void ManageTime(void)
+static void ManageTime(void)
 {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	TimerRef = tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
-void RefreshInfo(int roomId, int verbose)
+static void RefreshInfo(int roomId, int verbose)
 {
 	int nchat = ncServerGetNbInfoChats();
 	ChatInfo *chatInfo;
@@ -83,7 +104,7 @@ void RefreshInfo(int roomId, int verbose)
 	}
 }
 
-void ConvertTime(unsigned time_ms, unsigned *mins, unsigned *secs, unsigned *hundreths)
+static void ConvertTime(unsigned time_ms, unsigned *mins, unsigned *secs, unsigned *hundreths)
 {
 	unsigned totalSecs = (time_ms / 10) / 100;
 	*mins = totalSecs / 60;
@@ -91,17 +112,21 @@ void ConvertTime(unsigned time_ms, unsigned *mins, unsigned *secs, unsigned *hun
 	*hundreths = (time_ms / 10) % 100;
 }
 
-void ReadHighScoreFile(void)
+static void ReadHighScoreFile(void)
 {
 	memset(&TrHighScores, 0, sizeof(TrHighScores));
 	FILE *file = fopen("ToyServer.hs", "r");
-	if (file != NULL) {
-		fread(&TrHighScores, sizeof(TrHighScores), 1, file);
+	if (file != NULL)
+	{
+		if (fread(&TrHighScores, sizeof(TrHighScores), 1, file) != 1)
+			memset(&TrHighScores, 0, sizeof(TrHighScores));
 		fclose(file);
 	}
 	file = fopen("ToyServer.lap", "r");
-	if (file != NULL) {
-		fread(&TrBestLaps, sizeof(TrBestLaps), 1, file);
+	if (file != NULL)
+	{
+		if (fread(&TrBestLaps, sizeof(TrBestLaps), 1, file) != 1)
+			memset(&TrBestLaps, 0, sizeof(TrBestLaps));
 		fclose(file);
 	}
 }
@@ -138,7 +163,7 @@ static void HighScoresChatFile(FILE *fp, HighScores *data)
 	}
 }
 
-void SaveHighScoreFile(int refreshInfo)
+static void SaveHighScoreFile(int refreshInfo)
 {
 	uint32_t hundredths;
 	uint32_t secs;
@@ -214,7 +239,7 @@ void SaveHighScoreFile(int refreshInfo)
 	}
 }
 
-void ReadClientInfosMessage(NetMsgT7 *msg)
+static void ReadClientInfosMessage(NetMsgT7 *msg)
 {
 	char save = 0;
 	for (int i = 0; i < 8; i++)
@@ -234,7 +259,7 @@ void ReadClientInfosMessage(NetMsgT7 *msg)
 		SaveHighScoreFile(1);
 }
 
-void ResetDailyStats(void)
+static void ResetDailyStats(void)
 {
 	time_t now;
 	time(&now);
@@ -244,7 +269,7 @@ void ResetDailyStats(void)
 	memset(&DailyStats, 0, sizeof(DailyStats));
 }
 
-void SaveDailyStats(void)
+static void SaveDailyStats(void)
 {
 	FILE *fp = fopen("ToyServer.sta","a+");
 	if (fp != NULL)
@@ -277,7 +302,7 @@ int ncServerGetClientUdpTimeout(void) {
 	return ClientUdpTimeout;
 }
 
-void ncServerGetClientTimers(short *dynPackPerSec,short *cmdPackPerSec)
+void ncServerGetClientTimers(uint16_t *dynPackPerSec, uint16_t *cmdPackPerSec)
 {
 	if (dynPackPerSec != NULL)
 		*dynPackPerSec = NbDynamixPaquetsPerSec;
@@ -285,10 +310,7 @@ void ncServerGetClientTimers(short *dynPackPerSec,short *cmdPackPerSec)
 		*cmdPackPerSec = NbCommandPaquetsPerSec;
 }
 
-void NewInfoChatRoom(void) {
-}
-
-int ReadCfgInt(char *start, char *end, char **value)
+static int ReadCfgInt(char *start, char *end, char **value)
 {
 	char *p = start;
 	while (p < end && *p > ' ')
@@ -298,7 +320,7 @@ int ReadCfgInt(char *start, char *end, char **value)
 	return atoi(start);
 }
 
-int ReadCfgInfoChat(char *start, char *end, char **value)
+static int ReadCfgInfoChat(char *start, char *end, char **value)
 {
 	char *nextLine = strtok(start, "\n\r");
 	if (nextLine != NULL)
@@ -327,11 +349,10 @@ int ReadCfgInfoChat(char *start, char *end, char **value)
 		return 0;
 	if (ncServerCreateInfoChat(&tmpInfoChat) == 0)
 		return 0;
-	NewInfoChatRoom();
 	return 1;
 }
 
-int CreateInfoHighScores(void)
+static int CreateInfoHighScores(void)
 {
 	FILE *fp = fopen("ToyHighScores.cht","r");
 	if (fp == NULL)
@@ -345,11 +366,10 @@ int CreateInfoHighScores(void)
 		return 0;
 	if (ncServerCreateInfoChat(&tmpInfoChat) == 0)
 		return 0;
-	NewInfoChatRoom();
 	return 1;
 }
 
-int ReadCfgFile(char *filename)
+static int ReadCfgFile(char *filename)
 {
 	FILE *fp = fopen(filename, "r");
 	if (fp == NULL)
@@ -468,7 +488,7 @@ EXIT:
 	return rc;
 }
 
-void NewClientCallback(void)
+static void NewClientCallback(void)
 {
 	TotalStats.totalConnections = TotalStats.totalConnections + 1;
 	TotalStats.connectionCount = TotalStats.connectionCount + 1;
@@ -484,7 +504,7 @@ void NewClientCallback(void)
 	}
 }
 
-void DisconnectClientCallback(Client *client)
+static void DisconnectClientCallback(Client *client)
 {
 	time_t now;
 	time(&now);
@@ -495,7 +515,7 @@ void DisconnectClientCallback(Client *client)
 	DailyStats.connectionCount = DailyStats.connectionCount - 1;
 }
 
-void NewChatRoomCallback(void)
+static void NewChatRoomCallback(void)
 {
 	TotalStats.totalChats = TotalStats.totalChats + 1;
 	TotalStats.chatCount = TotalStats.chatCount + 1;
@@ -511,7 +531,7 @@ void NewChatRoomCallback(void)
 	}
 }
 
-void DeleteChatRoomCallback(ChatRoom *chatRoom)
+static void DeleteChatRoomCallback(ChatRoom *chatRoom)
 {
 	time_t now;
 	time(&now);
@@ -522,7 +542,7 @@ void DeleteChatRoomCallback(ChatRoom *chatRoom)
 	DailyStats.chatCount = DailyStats.chatCount - 1;
 }
 
-void NewGameCallback(void)
+static void NewGameCallback(void)
 {
 	TotalStats.totalGames = TotalStats.totalGames + 1;
 	TotalStats.gameCount = TotalStats.gameCount + 1;
@@ -538,7 +558,7 @@ void NewGameCallback(void)
 	}
 }
 
-void DeleteGameCallback(GameRoom *gameRoom)
+static void DeleteGameCallback(GameRoom *gameRoom)
 {
 	time_t now;
 	time(&now);
@@ -549,7 +569,7 @@ void DeleteGameCallback(GameRoom *gameRoom)
 	DailyStats.gameCount = DailyStats.gameCount - 1;
 }
 
-void ResultCallback(GameRoom *gameRoom)
+static void ResultCallback(GameRoom *gameRoom)
 {
 	uint8_t ranking[4];
 	int newBestLap = 0;
@@ -629,20 +649,18 @@ void ResultCallback(GameRoom *gameRoom)
 		SaveHighScoreFile(1);
 }
 
-int ServerStart(void)
+static int ServerStart(void)
 {
 	memset(&TotalStats, 0, sizeof(TotalStats));
 	ResetDailyStats();
-	ncLogWrite(0, "**************************************************************************************");
-	ncLogWrite(1, "**************************************************************************************");
-	ncLogWrite(2, "**************************************************************************************");
-	ncLogWrite(3, "**************************************************************************************");
 	ReadHighScoreFile();
 	FILE *fp = fopen("ToyServer.cfg", "r");
 	fclose(fp);
 	if (fp != NULL && ReadCfgFile("ToyServer.cfg") == 0)
 		return 0;
-	if (fp == NULL) {
+	if (fp == NULL)
+	{
+		printf("WARNING: can't find config file ToyServer.cfg\n");
 		if (ncChatRoomAllocate(MaxNbChats) == 0 || CreateInfoHighScores() == 0)
 			return 0;
 	}
@@ -666,7 +684,7 @@ int ServerStart(void)
 	return 1;
 }
 
-void ServerManage(void)
+static void ServerManage(void)
 {
 	static time_t lastrefresh;
 
@@ -684,7 +702,7 @@ void ServerManage(void)
 	}
 }
 
-void ServerShutDown(void)
+static void ServerShutDown(void)
 {
 	SaveDailyStats();
 	ncServerSendAllClientsStandardTcpMsg(5, 0);
@@ -697,7 +715,7 @@ void ServerShutDown(void)
 	ncServerClientRelease();
 }
 
-int CheckInfoChatFile(char *fileName)
+static int CheckInfoChatFile(char *fileName)
 {
 	FILE *fp = fopen(fileName, "r");
 	if (fp == NULL) {
@@ -747,7 +765,7 @@ int CheckInfoChatFile(char *fileName)
 	return 1;
 }
 
-void DisplayStats(void)
+static void DisplayStats(void)
 {
 	const char *timestr = ncGetTimeString(TotalStats.maxConnectionsTime);
 	printf("Connections: \tcurr: %d max: %d (at %s) total: %d\n", TotalStats.connectionCount,
@@ -766,7 +784,7 @@ void DisplayStats(void)
 	}
 }
 
-void DisplayHigh(void)
+static void DisplayHigh(void)
 {
 	uint32_t hundredths;
 	uint32_t secs;
@@ -809,7 +827,7 @@ void _strdate(char *date)
 	sprintf(date,"%02d/%02d/%04d", tm->tm_mon + 1, tm->tm_mday, tm->tm_year + 1900);
 }
 
-void DisplayChatInfo(int roomId)
+static void DisplayChatInfo(int roomId)
 {
 	ChatRoom *chatRoom = ncServerGetChatById(roomId);
 	if (chatRoom == NULL) {
@@ -818,7 +836,7 @@ void DisplayChatInfo(int roomId)
 	}
 	printf("Chat room \'%s\' (ID=%d) language : %s\n", chatRoom->listItem.name,
 			chatRoom->listItem.id, Languages[chatRoom->language]);
-	char strdate[16];
+	char strdate[32];
 	_strdate(strdate);
 	time_t now;
 	time(&now);
@@ -831,7 +849,7 @@ void DisplayChatInfo(int roomId)
 				chatRoom->clients[i]->listItem.id);
 }
 
-void DisplayGameInfo(int gameId)
+static void DisplayGameInfo(int gameId)
 {
 	GameRoom *gameRoom = ncServerGetGameById(gameId);
 	if (gameRoom == NULL) {
@@ -839,7 +857,7 @@ void DisplayGameInfo(int gameId)
 		return;
 	}
 	printf("Game \'%s\' (ID=%d)\n", gameRoom->listItem.name, gameRoom->listItem.id);
-	char dateString[16];
+	char dateString[32];
 	_strdate(dateString);
 	time_t now;
 	time(&now);
@@ -855,7 +873,7 @@ void DisplayGameInfo(int gameId)
 				gameRoom->players[i]->listItem.id, gameRoom->playerReady[i]);
 }
 
-void DisplayPlayerInfo(int clientId)
+static void DisplayPlayerInfo(int clientId)
 {
 	Client *client = ncClientFindById(clientId);
 	if (client == NULL) {
@@ -863,7 +881,7 @@ void DisplayPlayerInfo(int clientId)
 		return;
 	}
 	printf("Player \'%s\' (ID=%d)\n", client->listItem.name, client->listItem.id);
-	char datestring[16];
+	char datestring[32];
 	_strdate(datestring);
 	time_t now;
 	time(&now);
@@ -873,7 +891,7 @@ void DisplayPlayerInfo(int clientId)
 	printf("\tStatus : %s\n", StatusName[client->status]);
 }
 
-void ListInfos(void)
+static void ListInfos(void)
 {
 	int nInfoChat = ncServerGetNbInfoChats();
 	for (int i = 0; i < nInfoChat; i = i + 1)
@@ -885,7 +903,7 @@ void ListInfos(void)
 	printf("%d info rooms listed.\n", nInfoChat);
 }
 
-void DisplayInfoInfo(int roomId)
+static void DisplayInfoInfo(int roomId)
 {
 	int n = ncServerGetNbInfoChats();
 	ChatInfo *chatInfo = NULL;
@@ -908,7 +926,7 @@ void DisplayInfoInfo(int roomId)
 		printf("\t\t- %s\n", chatInfo->messages[i]);
 }
 
-void ServerCommand(char *cmd)
+static void ServerCommand(char *cmd)
 {
 	static int status;
 	static char ServerMsg[256];
@@ -1155,7 +1173,7 @@ static void handleCommand(void *a)
 	}
 }
 
-int main(int argc,char **argv)
+int main(int argc, char **argv)
 {
 	static int64_t next_nb_frames;
 	static time_t last_timer;
@@ -1167,6 +1185,13 @@ int main(int argc,char **argv)
 	sigaction(SIGINT, &sigact, NULL);
 
 	printf("Starting TOY RACER server...\n");
+	// Change working directory
+	char *slash = strrchr(argv[0], '/');
+	if (slash != NULL) {
+		argv[0][slash - argv[0]] = '\0';
+		int rc = chdir(argv[0]);
+		(void)rc;
+	}
 	ManageTime();
 	if (FirstTimer == 0)
 		FirstTimer = TimerRef;
@@ -1174,7 +1199,7 @@ int main(int argc,char **argv)
 		printf("Can\'t initialize network !\n\n");
 		return 1;
 	}
-	pollReadSocket(STDIN_FILENO, handleCommand, NULL);
+	asyncRead(STDIN_FILENO, handleCommand, NULL);
 
 	printf("TOY RACER server (version %d) started !\n\n", SERVER_VERSION);
 	printf("\ncommand :->\n");
@@ -1201,7 +1226,7 @@ int main(int argc,char **argv)
 		}
 		ServerManage();
 	}
-	stopPollingSocket(STDIN_FILENO);
+	cancelAsyncRead(STDIN_FILENO);
 	printf("TOY RACER server shutting down...\n");
 	ServerShutDown();
 	printf("OK, bye bye !\n");

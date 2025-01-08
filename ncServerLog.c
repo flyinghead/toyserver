@@ -12,17 +12,25 @@ void ncLogWrite(int logType, char *msg)
 {
 	if (logType >= 0 && logType < 4)
 	{
+#ifdef NDEBUG
+		static FILE *fp;
+		if (fp == NULL)
+			fp = fopen("toyserver.log", "a+");
+
+#else
 		FILE *fp = fopen(ncLog_FileName[logType], "a+");
+#endif
 		if (fp != NULL)
 		{
-			char date [16];
+			char date[32];
 			_strdate(date);
 			const char *time = ncGetTimeString(0);
-			fprintf(fp, "%s - %s > ", date, time);
-			size_t len = strlen(msg);
-			fwrite(msg, 1, len, fp);
-			fwrite("\r\n", 1, 2, fp);
+			fprintf(fp, "%s - %s > %s\n", date, time, msg);
+#ifdef NDEBUG
+			fflush(fp);
+#else
 			fclose(fp);
+#endif
 		}
 	}
 }

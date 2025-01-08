@@ -78,9 +78,9 @@ int ncSocketTcpSendStandardMsg(int sockfd, uint16_t msgType, int msgId)
 	return 0;
 }
 
-int ncSocketTcpSendMsg(Socket *socket, NetMsg *msg, int useSocketBuffer) {
+int ncSocketTcpSendMsg(Socket *socket, NetMsg *msg) {
 	msg->crc = ComputeMsgCRC(msg);
-	return ncSocketTcpSend(socket, msg, msg->size, useSocketBuffer);
+	return ncSocketTcpSend(socket, msg, msg->size);
 }
 
 int ncSocketUdpSendMsg(int sockfd, in_addr_t dstaddr, uint16_t dstport, NetMsg *msg) {
@@ -116,25 +116,30 @@ ssize_t ncSocketReadMsg(int sockfd, void (*callback)(uint8_t *data, void *), voi
 
 ssize_t ncSocketBufReadMsg(Socket *socket, void (*callback)(uint8_t *data, void *), void *cbArg)
 {
-	uint8_t buf[20480];	// TODO way too much
+	uint8_t buf[sizeof(socket->recvBuf) * 2];
 
 	ssize_t len = 0;
 	uint8_t *data = ncSocketRead(socket->fd, &len);
 	if (data != NULL && len != 0)
 	{
+		if (socket->recvBufSize + len > sizeof(buf) || len > sizeof(socket->recvBuf)) {
+			ncLogPrintf(0, "Socket %d receive buffer full", socket->fd);
+			return -2;
+		}
 		if (socket->recvBufSize != 0)
 		{
 			memcpy(buf, socket->recvBuf, socket->recvBufSize);
 			memcpy(buf + socket->recvBufSize, data, len);
 			data = buf;
-			len = len + socket->recvBufSize;
+			len += socket->recvBufSize;
 			socket->recvBufSize = 0;
 		}
-		for (uint8_t *p = data; p < data + len; p = p + *(uint16_t *)(p + 2))
+		for (uint8_t *p = data; p < data + len; p += ((NetMsg *)p)->size)
 		{
 			NetMsg * msg = (NetMsg *)data;
 			uint32_t size = len - (p - data);
-			if ((size < 12) || size < msg->size) {
+			if (size < 12 || size < msg->size)
+			{
 				socket->recvBufSize = size;
 				memcpy(socket->recvBuf, p, size);
 				return len;

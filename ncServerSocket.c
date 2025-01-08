@@ -80,7 +80,7 @@ int ncServerStartListening(uint16_t tcpport)
 	ncLogPrintf(0, "Socket is now listening...");
 	ncNbWaitingSockets = 0;
 	ncSocketListening = fd;
-	pollReadSocket(fd, listeningSocketCallback, NULL);
+	asyncRead(fd, listeningSocketCallback, NULL);
 
 	return 1;
 }
@@ -128,7 +128,7 @@ static void listeningSocketCallback(void *a)
 			socket->srcAddr = client_addr.sin_addr.s_addr;
 			ncLogPrintf(0, "Connection established from : %s , %d on socket %d",
 					saddr, ntohs(client_addr.sin_port), sockfd);
-			pollReadSocket(sockfd, waitingSocketCallback, socket);
+			asyncRead(sockfd, waitingSocketCallback, socket);
 		}
 	}
 	else
@@ -248,7 +248,7 @@ int ncServerSocketInit(uint16_t tcpPort, uint16_t udpPort)
 		return 0;
 	}
 	ncServerUdpPort = udpPort;
-	pollReadSocket(ncServerUdpSocket, udpSocketCallback, NULL);
+	asyncRead(ncServerUdpSocket, udpSocketCallback, NULL);
 
 	return 1;
 }
@@ -394,7 +394,8 @@ void ncSocketClose(int *pSockfd)
 {
 	if (*pSockfd == -1)
 		return;
-	stopPollingSocket(*pSockfd);
+	cancelAsyncRead(*pSockfd);
+	cancelAsyncWrite(*pSockfd);
 	close(*pSockfd);
 	ncLogPrintf(0, "Socket %d closed", *pSockfd);
 	*pSockfd = -1;
@@ -402,7 +403,7 @@ void ncSocketClose(int *pSockfd)
 
 uint8_t *ncSocketRead(int sockfd, ssize_t *len)
 {
-	static uint8_t ncReceiveBuff[10240];
+	static uint8_t ncReceiveBuff[1024];
 
 	if (sockfd == -1)
 	{
@@ -410,27 +411,7 @@ uint8_t *ncSocketRead(int sockfd, ssize_t *len)
 			*len = -1;
 		return NULL;
 	}
-	struct timeval tv;
-	tv.tv_sec = 0;
-	tv.tv_usec = 0;
-	fd_set fdset;
-	FD_ZERO(&fdset);
-	FD_SET(sockfd, &fdset);
-	int n = select(sockfd + 1,&fdset,NULL,NULL,&tv);
-	if (n == -1)
-	{
-		if (len != NULL)
-			*len = -1;
-		ncLogPrintf(0, "ERROR : ncSocketRead()->select(%d) error : ", sockfd);
-		ncSocketError(ncSocketGetLastError());
-		return NULL;
-	}
-	if (n == 0) {
-		if (len != NULL)
-			*len = 0;
-		return NULL;
-	}
-	ssize_t ret = recv(sockfd,ncReceiveBuff,sizeof(ncReceiveBuff),0);
+	ssize_t ret = recv(sockfd, ncReceiveBuff, sizeof(ncReceiveBuff), 0);
 	if (ret > 0)
 	{
 		if (len != NULL)
@@ -439,70 +420,56 @@ uint8_t *ncSocketRead(int sockfd, ssize_t *len)
 	}
 	if (ret == -1)
 	{
-		ncLogPrintf(0,"ERROR : ncSocketRead()->recv(%d) error : ",sockfd);
+		ncLogPrintf(0, "ERROR : ncSocketRead()->recv(%d) error : ", sockfd);
 		ncSocketError(ncSocketGetLastError());
 		if (len != NULL)
 			*len = -1;
 	}
-	else if (ret == 0)
+	else
 	{
 		ncLogPrintf(0, "!!! ncSocketRead()->recv(%d) 0 byte received : disconnection", sockfd);
 		if (len != NULL)
 			*len = -2;
 	}
-	else
-	{
-		ncLogPrintf(0, "ERROR : ncSocketRead()->recv(%d) returned < SOCKET_ERROR ", sockfd);
-		ncSocketError(ncSocketGetLastError());
-		if (len != NULL)
-			*len = -1;
-	}
 	return NULL;
 }
 
-int ncSocketTcpSend(Socket *socket, void *data, size_t len, int useSendBuffer)
+static void socketSendCallback(void *arg)
+{
+	Socket *socket = (Socket *)arg;
+	if (socket->sendBufSize > 0)
+	{
+		int rc = send(socket->fd, socket->sendBuf, socket->sendBufSize, MSG_NOSIGNAL);
+		if (rc == -1)
+		{
+			ncLogPrintf(0,"ERROR : ncSocketTcpSend() failed -> send(%d) error ", socket->fd);
+			ncSocketError(ncSocketGetLastError());
+			cancelAsyncWrite(socket->fd);
+			return;
+		}
+		if (rc == socket->sendBufSize)
+			ncNbTcpSent++;;
+		if (rc != 0)
+			memmove(socket->sendBuf, socket->sendBuf + rc, socket->sendBufSize - rc);
+		socket->sendBufSize -= rc;
+	}
+	if (socket->sendBufSize == 0)
+		cancelAsyncWrite(socket->fd);
+}
+
+int ncSocketTcpSend(Socket *socket, void *data, size_t len)
 {
 	if (socket->fd == -1)
 		return 0;
-	struct timeval tv;
-	tv.tv_sec = 0;
-	tv.tv_usec = 0;
-	fd_set fdset;
-	FD_ZERO(&fdset);
-	FD_SET(socket->fd, &fdset);
-	int rc = select(socket->fd + 1,NULL,&fdset,NULL,&tv);
-	if (rc == -1) {
-		ncLogPrintf(0,"ERROR : ncSocketTcpSend() failed -> select(%d) error ",socket->fd);
-		ncSocketError(ncSocketGetLastError());
-		return 0;
-	}
-	if (rc == 0 && useSendBuffer != 0)
-	{
-		if (len + socket->sendBufSize < 10240)
-		{
-			memcpy(socket->sendBuf + socket->sendBufSize,data,len);
-			socket->sendBufSize = len + socket->sendBufSize;
-			return 1;
-		}
+	if (len + socket->sendBufSize >= sizeof(socket->sendBuf)) {
 		ncLogPrintf(0, "ERROR : ncSocketTcpSend() failed -> send buffer FULL !!!", socket->fd);
 		return 0;
 	}
-	if (rc < 0)
-		return 0;
-	rc = send(socket->fd, data, len, MSG_NOSIGNAL);
-	if (rc == -1)
-	{
-		ncLogPrintf(0,"ERROR : ncSocketTcpSend() failed -> send(%d) error ",socket->fd);
-		ncSocketError(ncSocketGetLastError());
-		return 0;
-	}
-	if (rc == len)
-	{
-		ncNbTcpSent++;;
-		return 1;
-	}
-
-	return 0;
+	memcpy(socket->sendBuf + socket->sendBufSize, data, len);
+	socket->sendBufSize += len;
+	// TODO setting the socket no_delay would allow immediate send when possible
+	asyncWrite(socket->fd, socketSendCallback, socket);
+	return 1;
 }
 
 char *ncGetAddrString(in_addr_t addr)
@@ -545,7 +512,7 @@ int ncSocketUdpSend(int sockfd, void *data, size_t len, in_addr_t dst_addr, uint
 	fd_set fdset;
 	FD_ZERO(&fdset);
 	FD_SET(sockfd, &fdset);
-	int i = select(sockfd + 1, NULL, &fdset, NULL, &tv);
+	int i = select(sockfd + 1, NULL, &fdset, NULL, &tv);	// TODO set socket to NDELAY instead
 	if (i == -1)
 	{
 		ncLogPrintf(0, "ERROR : ncSocketUdpSend() failed -> select(%d) error ", sockfd);
@@ -569,7 +536,7 @@ int ncSocketUdpSend(int sockfd, void *data, size_t len, in_addr_t dst_addr, uint
 	return 0;
 }
 
-void pollReadSocket(int fd, void(*callback)(void*), void *argument)
+void asyncRead(int fd, void(*callback)(void*), void *argument)
 {
 	FD_SET(fd, &read_fd_set);
 	if (fd > max_fd_set)
@@ -578,7 +545,7 @@ void pollReadSocket(int fd, void(*callback)(void*), void *argument)
 	readCallbacks[fd].argument = argument;
 }
 
-void pollWriteSocket(int fd, void(*callback)(void*), void *argument)
+void asyncWrite(int fd, void(*callback)(void*), void *argument)
 {
 	FD_SET(fd, &write_fd_set);
 	if (fd > max_fd_set)
@@ -587,12 +554,15 @@ void pollWriteSocket(int fd, void(*callback)(void*), void *argument)
 	writeCallbacks[fd].argument = argument;
 }
 
-void stopPollingSocket(int fd)
+void cancelAsyncRead(int fd)
 {
 	FD_CLR(fd, &read_fd_set);
-	FD_CLR(fd, &write_fd_set);
-	// TODO decrease max_fd_set?
 	readCallbacks[fd].callback = NULL;
+}
+
+void cancelAsyncWrite(int fd)
+{
+	FD_CLR(fd, &write_fd_set);
 	writeCallbacks[fd].callback = NULL;
 }
 

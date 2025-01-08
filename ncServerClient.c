@@ -34,7 +34,7 @@ int ncServerSendClientTcpMsg(Client *client, NetMsg *msg)
 		return 0;
 	if (client->status <= CliDisconnecting)
 		return 0;
-	if (ncSocketTcpSendMsg(&client->sock, msg, 1) == 0)
+	if (ncSocketTcpSendMsg(&client->sock, msg) == 0)
 	{
 		ncLogPrintf(1, "ERROR sending TCP message to client \'%s\' (ID=%d).", client->listItem.name,
 				client->listItem.id);
@@ -142,8 +142,9 @@ int ncServerLoginCallback(int sockfd, uint32_t srcIp, uint16_t tcpPort, NetMsgT1
 	char *addrstr = ncGetAddrString(client->ipAddress);
 	ncLogPrintf(1,"New client \'%s\' (ID=%d) from %s , %d, udp %d on socket %d at %s.",
 			client->listItem.name, client->listItem.id, addrstr, ntohs(tcpPort), client->udpPort, sockfd, timestr);
-	stopPollingSocket(sockfd);
-	pollReadSocket(sockfd, clientSocketCallback, client);
+	cancelAsyncRead(sockfd);
+	cancelAsyncWrite(sockfd);
+	asyncRead(sockfd, clientSocketCallback, client);
 	if (ncServerClientNewCallback != NULL)
 		(*ncServerClientNewCallback)(client);
 	strcpy(msg->userName, client->listItem.name);
@@ -228,43 +229,8 @@ static void clientSocketCallback(void *arg)
 {
 	Client *client = (Client *)arg;
 	ssize_t len = ncSocketBufReadMsg(&client->sock, (void (*)(uint8_t *, void *))ncServerClientReadMsgCallback, client);
-	if (len < 0) {
+	if (len < 0)
 		ncServerDisconnectClient(client);
-	}
-	else if (client->status >= CliConnected && client->sock.sendBufSize != 0 && client->sock.fd != -1)
-	{
-		struct timeval tv;
-		tv.tv_sec = 0;
-		tv.tv_usec = 0;
-		fd_set fdset;
-		FD_ZERO(&fdset);
-		FD_SET(client->sock.fd, &fdset);
-		ssize_t rc = select(client->sock.fd + 1, NULL, &fdset, NULL, &tv);
-		if (rc == -1) {
-			ncServerDisconnectClient(client);
-		}
-		else if (rc > 0)
-		{
-			rc = send(client->sock.fd, client->sock.sendBuf, client->sock.sendBufSize, MSG_NOSIGNAL);
-			if (rc == -1)
-			{
-				ncLogPrintf(0, "ERROR : ncServerManageClients() : Can\'t send buffer data -> send(%d) error ",
-						client->sock.fd);
-				ncSocketError(ncSocketGetLastError());
-				ncServerDisconnectClient(client);
-			}
-			else if (rc == client->sock.sendBufSize) {
-				client->sock.sendBufSize = 0;
-				ncLogPrintf(0, "!!! SUCCESS !!! ncServerManageClients() : buffered data successfully sent !");
-			}
-			else
-			{
-				ncLogPrintf(0, "ERROR : ncServerManageClients() : Can\'t send buffer data -> not all data sent !");
-				ncSocketError(ncSocketGetLastError());
-				ncServerDisconnectClient(client);
-			}
-		}
-	}
 }
 
 Client *ncClientFindById(int clientId) {

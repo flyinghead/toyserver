@@ -16,9 +16,9 @@ struct Socket
 {
     int fd;
     int recvBufSize;
-    uint8_t recvBuf[10240];	// TODO way too much
+    uint8_t recvBuf[1024];
     int sendBufSize;
-    uint8_t sendBuf[10240];	// TODO way too much
+    uint8_t sendBuf[1024];
 };
 typedef struct Socket Socket;
 
@@ -32,17 +32,18 @@ struct ChatRoom
 };
 typedef struct ChatRoom ChatRoom;
 
-typedef enum ClientStatus {
-    CliAvailable=0,
-    CliDisconnecting=1,
-    CliConnected=2,
-    CliChatting=3,
-    CliInGameRoom=4,
-    CliReady=5,
-    CliLoading=6,
-    CliWaiting=7,
-    CliPlaying=8,
-    CliEnding=9
+typedef enum ClientStatus
+{
+    CliAvailable = 0,
+    CliDisconnecting = 1,
+    CliConnected = 2,
+    CliChatting = 3,
+    CliInGameRoom = 4,
+    CliReady = 5,
+    CliLoading = 6,
+    CliWaiting = 7,
+    CliPlaying = 8,
+    CliEnding = 9
 } ClientStatus;
 
 struct Client
@@ -66,7 +67,8 @@ struct Client
 };
 typedef struct Client Client;
 
-struct Result {
+struct Result
+{
     int totalSecs;
     int bestLap;
     int unk1;
@@ -74,11 +76,12 @@ struct Result {
 };
 typedef struct Result Result;
 
-typedef enum eGameStatus {
-    GameChoosing=0,
-    GameLoading=1,
-    GameRunning=2,
-    GameResults=3
+typedef enum eGameStatus
+{
+    GameChoosing = 0,
+    GameLoading = 1,
+    GameRunning = 2,
+    GameResults = 3
 } eGameStatus;
 
 struct GameRoom
@@ -99,7 +102,8 @@ struct GameRoom
 };
 typedef struct GameRoom GameRoom;
 
-struct ChatInfo {
+struct ChatInfo
+{
     int roomId;
     int language;
     int msgCount;
@@ -108,25 +112,6 @@ struct ChatInfo {
     char messages[100][256];
 };
 typedef struct ChatInfo ChatInfo;
-
-struct Stats {
-    uint32_t totalConnections;
-    uint32_t maxConnections;
-    time_t maxConnectionsTime;
-    uint32_t connectionCount;
-    uint32_t totalGames;
-    uint32_t maxGames;
-    time_t maxGamesTimes;
-    uint32_t gameCount;
-    uint32_t totalChats;
-    uint32_t maxChats;
-    time_t maxChatsTime;
-    uint32_t chatCount;
-    time_t connectionTime;
-    time_t gameTime;
-    time_t chatTime;
-};
-typedef struct Stats Stats;
 
 extern int MaxNbChats;
 extern int MaxNbGames;
@@ -142,43 +127,11 @@ extern int MaxUdpMsgSize;
 
 extern time_t TimerRef;
 
-void ManageTime(void);
-void RefreshInfo(int roomId, int verbose);
-void ConvertTime(unsigned time_ms, unsigned *mins, unsigned *secs, unsigned *hundreths);
-void ReadHighScoreFile(void);
-void SaveHighScoreFile(int refreshInfo);
-void ReadClientInfosMessage(NetMsgT7 *msg);
-void ResetDailyStats(void);
-void SaveDailyStats(void);
 int ncServerGetClientUdpTimeout(void);
-void ncServerGetClientTimers(short *dynPackPerSec, short *cmdPackPerSec);
-void NewInfoChatRoom(void);
-int ReadCfgInt(char *start, char *end, char **value);
-int ReadCfgInfoChat(char *start, char *end, char **value);
-int CreateInfoHighScores(void);
-int ReadCfgFile(char *filename);
-void NewClientCallback(void);
-void DisconnectClientCallback(Client *client);
-void NewChatRoomCallback(void);
-void DeleteChatRoomCallback(ChatRoom *chatRoom);
-void NewGameCallback(void);
-void DeleteGameCallback(GameRoom *gameRoom);
-void ResultCallback(GameRoom *gameRoom);
-int ServerStart(void);
-void ServerManage(void);
-void ServerShutDown(void);
-int CheckInfoChatFile(char *fileName);
-void DisplayStats(void);
-void DisplayHigh(void);
-void DisplayChatInfo(int roomId);
-void DisplayGameInfo(int gameId);
-void DisplayPlayerInfo(int clientId);
-void ListInfos(void);
-void DisplayInfoInfo(int roomId);
-void ServerCommand(char *cmd);
+void ncServerGetClientTimers(uint16_t *dynPackPerSec, uint16_t *cmdPackPerSec);
 uint32_t ComputeMsgCRC(NetMsg *data);
 int ncSocketTcpSendStandardMsg(int sockfd, uint16_t param_2, int param_3);
-int ncSocketTcpSendMsg(Socket *socket, NetMsg *msg, int useSocketBuffer);
+int ncSocketTcpSendMsg(Socket *socket, NetMsg *msg);
 int ncSocketUdpSendMsg(int sockfd, in_addr_t dstaddr, uint16_t dstport, NetMsg *msg);
 ssize_t ncSocketReadMsg(int sockfd, void (*callback)(uint8_t *data, void *), void *cbArg);
 ssize_t ncSocketBufReadMsg(Socket *socket, void (*callback)(uint8_t *data, void *), void *cbArg);
@@ -276,12 +229,13 @@ int ncSocketInit(void);
 void ncSocketRelease(void);
 void ncSocketClose(int *pSockfd);
 uint8_t *ncSocketRead(int sockfd, ssize_t *len);
-int ncSocketTcpSend(Socket *socket, void *data, size_t len, int useSendBuffer);
+int ncSocketTcpSend(Socket *socket, void *data, size_t len);
 char * ncGetAddrString(in_addr_t addr);
 int ncSocketUdpInit(uint16_t port);
 int ncSocketUdpSend(int sockfd, void *data, size_t len, in_addr_t dst_addr, uint16_t dstport);
 void _strdate(char *date);
-void pollReadSocket(int fd, void(*callback)(void*), void *argument);
-void pollWriteSocket(int fd, void(*callback)(void*), void *argument);
-void stopPollingSocket(int fd);
+void asyncRead(int fd, void(*callback)(void*), void *argument);
+void asyncWrite(int fd, void(*callback)(void*), void *argument);
+void cancelAsyncRead(int fd);
+void cancelAsyncWrite(int fd);
 int pollWait(int timeout);
