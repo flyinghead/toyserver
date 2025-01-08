@@ -69,7 +69,7 @@ GameRoom *ncGameRoomCreate(Client *client, char *gameName, uint8_t *gameParams, 
 	strcpy(msg.gameName, gameRoom->listItem.name);
 	ncServerSendAllClientsTcpMsgExceptFrom(&msg.head, client->listItem.id);
 	const char *timeString = ncGetTimeString(gameRoom->creationTime);
-	ncLogPrintf(2, "New game room \'%s\' (ID=%d) created by client \'%s\' (ID=%d) at %s.",
+	ncLogPrintf(2, "New game room '%s' (ID=%d) created by client '%s' (ID=%d) at %s.",
 			gameRoom->listItem.name, gameRoom->listItem.id, client->listItem.name,
 			client->listItem.id, timeString);
 
@@ -231,11 +231,11 @@ void ncGameRoomSetDeleteCallback(void *callback) {
 void ncGameRoomDelete(GameRoom *gameRoom)
 {
 	ncServerSendAllClientsStandardTcpMsg(25, gameRoom->listItem.id);
-	ncLogPrintf(2, "Game room \'%s\' (ID=%d) deleted.", gameRoom->listItem.name,
+	ncLogPrintf(2, "Game room '%s' (ID=%d) deleted.", gameRoom->listItem.name,
 			gameRoom->listItem.id);
 	int ret = ncListDelete(&GameRooms, &gameRoom->listItem);
 	if (ret == 0)
-		ncLogPrintf(2, "ERROR deleting Game room \'%s\' (ID=%d) deleted.", gameRoom->listItem.name,
+		ncLogPrintf(2, "ERROR deleting Game room '%s' (ID=%d) deleted.", gameRoom->listItem.name,
 				gameRoom->listItem.id);
 }
 
@@ -362,7 +362,7 @@ static void gameRoomManage(GameRoom *gameRoom, void *arg)
 					&& client->lastUdpTimer != 0
 					&& TimerRef - client->lastUdpTimer > Udp_Timeout)
 			{
-				ncLogPrintf(1, "!!!TIMEOUT : client \'%s\' (ID=%d) UDP timeout !", client->listItem.name,
+				ncLogPrintf(1, "!!!TIMEOUT : client '%s' (ID=%d) UDP timeout !", client->listItem.name,
 						client->listItem.id);
 				ncServerDisconnectClient(client);
 			}

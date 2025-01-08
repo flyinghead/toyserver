@@ -22,7 +22,7 @@ void ncServerDisconnectClient(Client *client)
 			(*ncServerClientDisconnectCallback)(client);
 		client->status = CliDisconnecting;
 		char *ip = ncGetAddrString(client->ipAddress);
-		ncLogPrintf(1,"DISCONNECT : Client \'%s\' (ID=%d) IP %s , %d, udp %d on socket %d.",
+		ncLogPrintf(1,"DISCONNECT : Client '%s' (ID=%d) IP %s , %d, udp %d on socket %d.",
 				client->listItem.name, client->listItem.id, ip, ntohs(client->tcpPort), client->udpPort, client->sock.fd);
 		ncSocketClose(&client->sock.fd);
 	}
@@ -36,7 +36,7 @@ int ncServerSendClientTcpMsg(Client *client, NetMsg *msg)
 		return 0;
 	if (ncSocketTcpSendMsg(&client->sock, msg) == 0)
 	{
-		ncLogPrintf(1, "ERROR sending TCP message to client \'%s\' (ID=%d).", client->listItem.name,
+		ncLogPrintf(1, "ERROR sending TCP message to client '%s' (ID=%d).", client->listItem.name,
 				client->listItem.id);
 		ncServerDisconnectClient(client);
 		return 0;
@@ -52,7 +52,7 @@ int ncServerSendClientUdpMsg(Client *client, NetMsg *msg)
 		return 0;
 	int rc = ncSocketUdpSendMsg(ncServerUdpSocket, client->ipAddress, client->udpPort, msg);
 	if (rc == 0) {
-		ncLogPrintf(1, "ERROR sending UDP message to client \'%s\' (ID=%d).", client->listItem.name,
+		ncLogPrintf(1, "ERROR sending UDP message to client '%s' (ID=%d).", client->listItem.name,
 				client->listItem.id);
 		return 0;
 	}
@@ -140,7 +140,7 @@ int ncServerLoginCallback(int sockfd, uint32_t srcIp, uint16_t tcpPort, NetMsgT1
 	client->timer = TimerRef + 5000;
 	const char *timestr = ncGetTimeString(client->connectTime);
 	char *addrstr = ncGetAddrString(client->ipAddress);
-	ncLogPrintf(1,"New client \'%s\' (ID=%d) from %s , %d, udp %d on socket %d at %s.",
+	ncLogPrintf(1,"New client '%s' (ID=%d) from %s , %d, udp %d on socket %d at %s.",
 			client->listItem.name, client->listItem.id, addrstr, ntohs(tcpPort), client->udpPort, sockfd, timestr);
 	cancelAsyncRead(sockfd);
 	cancelAsyncWrite(sockfd);

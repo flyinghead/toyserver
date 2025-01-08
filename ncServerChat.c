@@ -109,7 +109,7 @@ ChatRoom *ncChatRoomCreate(Client *client, char *roomName)
 			client->chatRoom = chatRoom;
 			client->status = CliChatting;
 			const char *timestr = ncGetTimeString(chatRoom->creationTime);
-			ncLogPrintf(3, "New chat room \'%s\' (ID=%d) created by \'%s\' (ID=%d) at %s.",
+			ncLogPrintf(3, "New chat room '%s' (ID=%d) created by '%s' (ID=%d) at %s.",
 					chatRoom->listItem.name, chatRoom->listItem.id, client->listItem.name,
 					client->listItem.id, timestr);
 			if (ncChatRoomNewCallback != NULL)
@@ -249,10 +249,10 @@ void ncChatRoomDelete(ChatRoom *room)
 	int ret;
 
 	ncServerSendAllClientsStandardTcpMsg(17, room->listItem.id);
-	ncLogPrintf(3, "Chat room \'%s\' (ID=%d) deleted.", room->listItem.name, room->listItem.id);
+	ncLogPrintf(3, "Chat room '%s' (ID=%d) deleted.", room->listItem.name, room->listItem.id);
 	ret = ncListDelete(&ChatRooms, (ListItem *)room);
 	if (ret == 0)
-		ncLogPrintf(3, "ERROR deleting Chat room \'%s\' (ID=%d) deleted.", room->listItem.name, room->listItem.id);
+		ncLogPrintf(3, "ERROR deleting Chat room '%s' (ID=%d) deleted.", room->listItem.name, room->listItem.id);
 }
 
 void ncChatSendList(Client *client)

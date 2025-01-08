@@ -6,7 +6,7 @@ INSTALL_USER = toyserver
 
 all: toyserver toyserver.service
 
-toyserver: $(SRC) globals.h ncCRC32.h ncList.h netmsg.h toyserver.h
+toyserver: $(SRC) globals.h ncCRC32.h ncList.h netmsg.h toyserver.h Makefile
 	$(CC) $(CFLAGS) -o $@ $(SRC)
 
 clean:
@@ -17,7 +17,7 @@ install: all
 	install --strip -o $(INSTALL_USER) -g $(INSTALL_USER) toyserver $(INSTALL_DIR)
 	install -m 0644 -o $(INSTALL_USER) -g $(INSTALL_USER) ToyServer.cfg $(INSTALL_DIR)
 
-toyserver.service: toyserver.service.in
+toyserver.service: toyserver.service.in Makefile
 	cp toyserver.service.in toyserver.service
 	sed -e "s/INSTALL_USER/$(INSTALL_USER)/g" -e "s:INSTALL_DIR:$(INSTALL_DIR):g" < $< > $@
 

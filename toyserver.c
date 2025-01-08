@@ -145,7 +145,7 @@ static void HighScoresChatFile(FILE *fp, HighScores *data)
 		}
 		else {
 			ConvertTime(data->times[raceIdx], &mins, &secs, &hundredths);
-			fprintf(fp, "Race %d : %d:%02d:%02d by \'%s\' on %s\n", raceIdx + 1, mins, secs, hundredths,
+			fprintf(fp, "Race %d : %d:%02d:%02d by '%s' on %s\n", raceIdx + 1, mins, secs, hundredths,
 					data->RacerNames[raceIdx], TrCars[data->RacerCars[raceIdx]]);
 		}
 	}
@@ -157,7 +157,7 @@ static void HighScoresChatFile(FILE *fp, HighScores *data)
 		}
 		else {
 			ConvertTime(data->times[raceIdx], &mins, &secs, &hundredths);
-			fprintf(fp, "Race %d : %d:%02d:%02d by \'%s\' on %s\n", raceIdx - 4 + 1, mins, secs, hundredths,
+			fprintf(fp, "Race %d : %d:%02d:%02d by '%s' on %s\n", raceIdx - 4 + 1, mins, secs, hundredths,
 					data->RacerNames[raceIdx], TrCars[data->RacerCars[raceIdx]]);
 		}
 	}
@@ -185,7 +185,7 @@ static void SaveHighScoreFile(int refreshInfo)
 		for (int raceIdx = 0; raceIdx < 8; raceIdx++)
 		{
 			ConvertTime(TrHighScores.times[raceIdx], &mins, &secs, &hundredths);
-			fprintf(fp,"RACE %d : %d:%02d:%02d on %s : \'%s\' (%s)\n", raceIdx + 1, mins, secs, hundredths,
+			fprintf(fp,"RACE %d : %d:%02d:%02d on %s : '%s' (%s)\n", raceIdx + 1, mins, secs, hundredths,
 					TrCars[TrHighScores.RacerCars[raceIdx]], TrHighScores.RacerNames[raceIdx], TrHighScores.RacerCountries[raceIdx]);
 		}
 		fclose(fp);
@@ -232,7 +232,7 @@ static void SaveHighScoreFile(int refreshInfo)
 				if (raceIdx > 3)
 					track -= 4;
 				ConvertTime(TrBestLaps[raceIdx][i].time, &mins, &secs, &hundredths);
-				fprintf(fp, "RACE %d : %d:%02d:%02d : \'%s\'\n", track + 1, mins, secs, hundredths, TrBestLaps[raceIdx][i].name);
+				fprintf(fp, "RACE %d : %d:%02d:%02d : '%s'\n", track + 1, mins, secs, hundredths, TrBestLaps[raceIdx][i].name);
 			}
 		}
 		fclose(fp);
@@ -719,7 +719,7 @@ static int CheckInfoChatFile(char *fileName)
 {
 	FILE *fp = fopen(fileName, "r");
 	if (fp == NULL) {
-		printf("ERROR : Can\'t open file %s.\n", fileName);
+		printf("ERROR : Can't open file %s.\n", fileName);
 		return 0;
 	}
 	fseek(fp, 0, SEEK_END);
@@ -735,7 +735,7 @@ static int CheckInfoChatFile(char *fileName)
 	if (fileSize == 0 || fread(buf, fileSize, 1, fp) != 1)
 	{
 		fclose(fp);
-		printf("ERROR : Can\'t read file %s.\n", fileName);
+		printf("ERROR : Can't read file %s.\n", fileName);
 		return 0;
 	}
 	fclose(fp);
@@ -793,7 +793,7 @@ static void DisplayHigh(void)
 
 	for (raceIdx = 0; raceIdx < 8; raceIdx = raceIdx + 1) {
 		ConvertTime(TrHighScores.times[raceIdx],&mins,&secs,&hundredths);
-		printf("RACE %d : %d:%02d:%02d on %s : \'%s\' (%s)\n",raceIdx + 1,mins,secs,hundredths,
+		printf("RACE %d : %d:%02d:%02d on %s : '%s' (%s)\n",raceIdx + 1,mins,secs,hundredths,
 				TrCars[TrHighScores.RacerCars[raceIdx]],TrHighScores.RacerNames[raceIdx],TrHighScores.RacerCountries[raceIdx]);
 	}
 }
@@ -804,19 +804,19 @@ static void breakhandler(int signum) {
 
 static void GameListCallback(GameRoom *gameRoom, void *arg) {
 	Nb = Nb + 1;
-	printf("%d> \'%s\' (ID=%d) %d/%d\n", Nb, gameRoom->listItem.name, gameRoom->listItem.id,
+	printf("%d> '%s' (ID=%d) %d/%d\n", Nb, gameRoom->listItem.name, gameRoom->listItem.id,
 			gameRoom->playerCount, gameRoom->maxPlayers);
 }
 
 static void ChatListCallback(ChatRoom *chatRoom, void *arg) {
 	Nb = Nb + 1;
-	printf("%d> \'%s\' (ID=%d) %d client(s)\n", Nb, chatRoom->listItem.name, chatRoom->listItem.id,
+	printf("%d> '%s' (ID=%d) %d client(s)\n", Nb, chatRoom->listItem.name, chatRoom->listItem.id,
 			chatRoom->userCount);
 }
 
 static void PlayerListCallback(Client *client, void *arg) {
 	Nb = Nb + 1;
-	printf("%d> \'%s\' ID=%d\n", Nb, client->listItem.name, client->listItem.id);
+	printf("%d> '%s' ID=%d\n", Nb, client->listItem.name, client->listItem.id);
 }
 
 void _strdate(char *date)
@@ -834,7 +834,7 @@ static void DisplayChatInfo(int roomId)
 		printf("Chat room ID=%d not found !!!\n", roomId);
 		return;
 	}
-	printf("Chat room \'%s\' (ID=%d) language : %s\n", chatRoom->listItem.name,
+	printf("Chat room '%s' (ID=%d) language : %s\n", chatRoom->listItem.name,
 			chatRoom->listItem.id, Languages[chatRoom->language]);
 	char strdate[32];
 	_strdate(strdate);
@@ -845,7 +845,7 @@ static void DisplayChatInfo(int roomId)
 	printf("\tCreated %s - %s for %s\n", strdate, timestr, secs);
 	printf("\t%d clients :\n", chatRoom->userCount);
 	for (int i = 0; i < (int)chatRoom->userCount; i++)
-		printf("\t\t- \'%s\' ID=%d\n", chatRoom->clients[i]->listItem.name,
+		printf("\t\t- '%s' ID=%d\n", chatRoom->clients[i]->listItem.name,
 				chatRoom->clients[i]->listItem.id);
 }
 
@@ -856,7 +856,7 @@ static void DisplayGameInfo(int gameId)
 		printf("Game ID=%d not found !!!\n", gameId);
 		return;
 	}
-	printf("Game \'%s\' (ID=%d)\n", gameRoom->listItem.name, gameRoom->listItem.id);
+	printf("Game '%s' (ID=%d)\n", gameRoom->listItem.name, gameRoom->listItem.id);
 	char dateString[32];
 	_strdate(dateString);
 	time_t now;
@@ -869,7 +869,7 @@ static void DisplayGameInfo(int gameId)
 	printf("\tparams : %u %u %u %u\n", gameRoom->gameParams[0], gameRoom->gameParams[1],
 			gameRoom->gameParams[2], gameRoom->gameParams[3]);
 	for (int i = 0; i < (int)gameRoom->playerCount; i++)
-		printf("\t\t- \'%s\' ID=%d (ready:%d)\n", gameRoom->players[i]->listItem.name,
+		printf("\t\t- '%s' ID=%d (ready:%d)\n", gameRoom->players[i]->listItem.name,
 				gameRoom->players[i]->listItem.id, gameRoom->playerReady[i]);
 }
 
@@ -880,7 +880,7 @@ static void DisplayPlayerInfo(int clientId)
 		printf("Player ID=%d not found !!!\n", clientId);
 		return;
 	}
-	printf("Player \'%s\' (ID=%d)\n", client->listItem.name, client->listItem.id);
+	printf("Player '%s' (ID=%d)\n", client->listItem.name, client->listItem.id);
 	char datestring[32];
 	_strdate(datestring);
 	time_t now;
@@ -898,7 +898,7 @@ static void ListInfos(void)
 	{
 		ChatInfo *chatInfo = ncServerGetInfoChatIndexPtr(i);
 		if (chatInfo != NULL)
-			printf("%d> \'%s\' (ID=%d)\n", i + 1, chatInfo->chatName, chatInfo->roomId);
+			printf("%d> '%s' (ID=%d)\n", i + 1, chatInfo->chatName, chatInfo->roomId);
 	}
 	printf("%d info rooms listed.\n", nInfoChat);
 }
@@ -919,7 +919,7 @@ static void DisplayInfoInfo(int roomId)
 		return;
 	}
 	const char *lang = Languages[chatInfo->language];
-	printf("Info room \'%s\' (ID=%d) language : %s\n", chatInfo->chatName, chatInfo->roomId, lang);
+	printf("Info room '%s' (ID=%d) language : %s\n", chatInfo->chatName, chatInfo->roomId, lang);
 	printf("\tText file : %s\n", chatInfo->highScoreFileName);
 	printf("\t%d message lines :\n", chatInfo->msgCount);
 	for (int i = 0; i < chatInfo->msgCount; i++)
@@ -942,7 +942,7 @@ static void ServerCommand(char *cmd)
 			return;
 		}
 		if (strcasecmp(cmd, "msg") == 0) {
-			printf("\nEnter your message, it may have several, lines\nEnter #END# as a new line to send the message\nYou\'ll be asked for confirmation\nMessage :\n");
+			printf("\nEnter your message, it may have several, lines\nEnter #END# as a new line to send the message\nYou'll be asked for confirmation\nMessage :\n");
 			status = 10;
 			ServerMsg[0] = 0;
 			return;
@@ -958,7 +958,7 @@ static void ServerCommand(char *cmd)
 			return;
 		}
 		if (strcasecmp(cmd, "refresh") == 0) {
-			printf("Enter info room\'s ID :\n");
+			printf("Enter info room's ID :\n");
 			status = 12;
 			return;
 		}
@@ -984,7 +984,7 @@ static void ServerCommand(char *cmd)
 			printf("\tSTATS(S): some stats...\n");
 			printf("\tHIGH (H): high scores...\n");
 			printf("\tMSG     : send a message to all players...\n");
-			printf("\tREFRESH : reload info room\'s text file...\n");
+			printf("\tREFRESH : reload info room's text file...\n");
 			printf("\tQUIT    : shut down the server !\n\n");
 		}
 		printf("\ncommand :->\n");
@@ -1002,7 +1002,7 @@ static void ServerCommand(char *cmd)
 		{
 			Client *client = ncClientFindById(Victim);
 			if (client != NULL) {
-				printf("Bye, bye Mr \'%s\'...\nPlayer ID=%d killed.", client->listItem.name, client->listItem.id);
+				printf("Bye, bye Mr '%s'...\nPlayer ID=%d killed.", client->listItem.name, client->listItem.id);
 				ncServerDisconnectClient(client);
 			}
 		}
@@ -1056,22 +1056,22 @@ static void ServerCommand(char *cmd)
 			case 'C':
 			case 'c':
 				status = 7;
-				printf("Enter chat\'s ID :\n");
+				printf("Enter chat's ID :\n");
 				break;
 			case 'G':
 			case 'g':
 				status = 6;
-				printf("Enter game\'s ID :\n");
+				printf("Enter game's ID :\n");
 				break;
 			case 'I':
 			case 'i':
 				status = 8;
-				printf("Enter info room\'s ID :\n");
+				printf("Enter info room's ID :\n");
 				break;
 			case 'P':
 			case 'p':
 				status = 5;
-				printf("Enter player\'s ID :\n");
+				printf("Enter player's ID :\n");
 				break;
 			default:
 				printf("error\n");
@@ -1121,7 +1121,7 @@ static void ServerCommand(char *cmd)
 				printf("\ncommand :->\n");
 			}
 			else {
-				printf("Do-you really want to KILL player \'%s\' (ID=%d)?\n(yes/no) ?\n",
+				printf("Do-you really want to KILL player '%s' (ID=%d)?\n(yes/no) ?\n",
 						client->listItem.name, client->listItem.id);
 				status = 2;
 			}
@@ -1171,6 +1171,10 @@ static void handleCommand(void *a)
 		buf[nchars - 1] = '\0';
 		ServerCommand(buf);
 	}
+	else {
+		// stop reading stdin
+		cancelAsyncRead(STDIN_FILENO);
+	}
 }
 
 int main(int argc, char **argv)
@@ -1183,6 +1187,7 @@ int main(int argc, char **argv)
 	sigact.sa_handler = breakhandler;
 	sigact.sa_flags = SA_RESTART;
 	sigaction(SIGINT, &sigact, NULL);
+	sigaction(SIGTERM, &sigact, NULL);
 
 	printf("Starting TOY RACER server...\n");
 	// Change working directory
@@ -1196,7 +1201,7 @@ int main(int argc, char **argv)
 	if (FirstTimer == 0)
 		FirstTimer = TimerRef;
 	if (ServerStart() == 0) {
-		printf("Can\'t initialize network !\n\n");
+		printf("Can't initialize network !\n\n");
 		return 1;
 	}
 	asyncRead(STDIN_FILENO, handleCommand, NULL);
