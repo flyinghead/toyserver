@@ -15,7 +15,6 @@ clean:
 install: all
 	install -o $(INSTALL_USER) -g $(INSTALL_USER) -d $(INSTALL_DIR)
 	install --strip -o $(INSTALL_USER) -g $(INSTALL_USER) toyserver $(INSTALL_DIR)
-	install -m 0644 -o $(INSTALL_USER) -g $(INSTALL_USER) ToyServer.cfg $(INSTALL_DIR)
 
 toyserver.service: toyserver.service.in Makefile
 	cp toyserver.service.in toyserver.service
@@ -25,4 +24,3 @@ installservice: toyserver.service
 	install -o root -g root -d /usr/local/lib/systemd/
 	install -m 0644 -o root -g root $< /usr/local/lib/systemd/
 	systemctl enable /usr/local/lib/systemd/toyserver.service
-	
