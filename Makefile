@@ -1,4 +1,4 @@
-SRC = ncList.c ncCRC32.c ncNetMsg.c ncServerChat.c ncServerClient.c ncServerClientMsg.c ncServerGame.c ncServerLog.c ncServerSocket.c toyserver.c
+SRC = ncList.c ncCRC32.c ncNetMsg.c ncServerChat.c ncServerClient.c ncServerClientMsg.c ncServerGame.c ncServerLog.c ncServerSocket.c toyserver.c discord.c
 #CFLAGS = -g -Wall -fsanitize=address -static-libasan
 CFLAGS = -O3 -Wall -DNDEBUG
 INSTALL_DIR = /usr/local/toyserver
@@ -7,7 +7,7 @@ INSTALL_USER = toyserver
 all: toyserver toyserver.service
 
 toyserver: $(SRC) globals.h ncCRC32.h ncList.h netmsg.h toyserver.h Makefile
-	$(CC) $(CFLAGS) -o $@ $(SRC)
+	$(CC) $(CFLAGS) -o $@ $(SRC) -lcurl -lpthread
 
 clean:
 	rm -f toyserver *.o toyserver.service

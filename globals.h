@@ -13,6 +13,8 @@ int ncNbUdpLost;
 int MaxUdpMsgSize;
 int ncNbTcpSent;
 
+char DiscordWebhook[256];
+
 const char *Languages[] = {
 	"English",
 	"French",

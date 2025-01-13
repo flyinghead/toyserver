@@ -72,6 +72,7 @@ GameRoom *ncGameRoomCreate(Client *client, char *gameName, uint8_t *gameParams, 
 	ncLogPrintf(2, "New game room '%s' (ID=%d) created by client '%s' (ID=%d) at %s.",
 			gameRoom->listItem.name, gameRoom->listItem.id, client->listItem.name,
 			client->listItem.id, timeString);
+	discordGameCreated(gameRoom);
 
 	return gameRoom;
 }
@@ -262,6 +263,7 @@ void ncGameCheckLoad(GameRoom *gameRoom)
 	}
 	gameRoom->status = GameRunning;
 	ncGameStatusChanged(gameRoom);
+	discordRaceStart(gameRoom);
 }
 
 void ncGameReadInGameMessage(Client *client, NetMsgT36 *msg)

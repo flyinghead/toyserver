@@ -391,41 +391,42 @@ static int ReadCfgFile(char *filename)
 	}
 	int rc = 0;
 	char *optName = fileStart;
-	while (optName < fileStart + fileSize)
+	char *end = fileStart + fileSize;
+	while (optName < end)
 	{
 		char *value;
-		for (value = optName; value < fileStart + fileSize && *value != ':'; value++) {
+		for (value = optName; value < end && *value != ':'; value++) {
 		}
 		if (*value != ':')
 			break;
 		*value = '\0';
 		if (strcasecmp(optName, "TCP_Port") == 0)
 		{
-			Tcp_Port = (uint16_t)ReadCfgInt(value + 1, fileStart + fileSize, &optName);
+			Tcp_Port = (uint16_t)ReadCfgInt(value + 1, end, &optName);
 			if (Tcp_Port == 0)
 				goto EXIT;
 		}
 		else if (strcasecmp(optName, "UDP_Port") == 0)
 		{
-				Udp_Port = (uint16_t)ReadCfgInt(value + 1,fileStart + fileSize,&optName);
+				Udp_Port = (uint16_t)ReadCfgInt(value + 1,end,&optName);
 				if (Udp_Port == 0)
 					goto EXIT;
 		}
 		else if (strcasecmp(optName, "NbPlayers") == 0)
 		{
-			MaxNbPlayers = ReadCfgInt(value + 1, fileStart + fileSize, &optName);
+			MaxNbPlayers = ReadCfgInt(value + 1, end, &optName);
 			if (MaxNbPlayers == 0)
 				goto EXIT;
 		}
 		else if (strcasecmp(optName, "NbGames") == 0)
 		{
-			MaxNbGames = ReadCfgInt(value + 1, fileStart + fileSize, &optName);
+			MaxNbGames = ReadCfgInt(value + 1, end, &optName);
 			if (MaxNbGames == 0)
 				goto EXIT;
 		}
 		else if (strcasecmp(optName, "NbChats") == 0)
 		{
-			MaxNbChats = ReadCfgInt(value + 1, fileStart + fileSize, &optName);
+			MaxNbChats = ReadCfgInt(value + 1, end, &optName);
 			if (MaxNbChats == 0)
 				goto EXIT;
 			if (ncChatRoomAllocate(MaxNbChats) == 0)
@@ -435,40 +436,49 @@ static int ReadCfgFile(char *filename)
 		}
 		else if (strcasecmp(optName, "Command_paquets_per_sec") == 0)
 		{
-			NbCommandPaquetsPerSec = (short)ReadCfgInt(value + 1, fileStart + fileSize, &optName);
+			NbCommandPaquetsPerSec = (short)ReadCfgInt(value + 1, end, &optName);
 			if (NbCommandPaquetsPerSec == 0)
 				goto EXIT;
 		}
 		else if (strcasecmp(optName, "Dynamix_paquets_per_sec") == 0)
 		{
-			NbDynamixPaquetsPerSec = (short)ReadCfgInt(value + 1, fileStart + fileSize, &optName);
+			NbDynamixPaquetsPerSec = (short)ReadCfgInt(value + 1, end, &optName);
 			if (NbDynamixPaquetsPerSec == 0)
 				goto EXIT;
 		}
 		else if (strcasecmp(optName, "client_UDP_time_out") == 0) {
-			ClientUdpTimeout = ReadCfgInt(value + 1, fileStart + fileSize, &optName);
+			ClientUdpTimeout = ReadCfgInt(value + 1, end, &optName);
 		}
 		else if (strcasecmp(optName, "UDP_time_out") == 0) {
-			UdpTimeout = ReadCfgInt(value + 1, fileStart + fileSize, &optName);
+			UdpTimeout = ReadCfgInt(value + 1, end, &optName);
+		}
+		else if (strcasecmp(optName, "DiscordWebhook") == 0)
+		{
+			char *p = value + 1;
+			while (p < end && *p > ' ')
+				p++;
+			*p = '\0';
+			strcpy(DiscordWebhook, value + 1);
+			optName = p + 1;
 		}
 		else
 		{
 			static int nbInfoChat;
 			if (strcasecmp(optName, "info_Chat_list_nb") == 0) {
-				nbInfoChat = ReadCfgInt(value + 1, fileStart + fileSize, &optName);
+				nbInfoChat = ReadCfgInt(value + 1, end, &optName);
 			}
 			else if (strcasecmp(optName, "info_Chat_list_start") == 0)
 			{
 				do {
 					optName = value + 1;
-					if (fileStart + fileSize <= optName)
+					if (optName >= end)
 						break;
 					value = optName;
 				} while (*optName <= ' ');
 				int i = 0;
 				while (i < nbInfoChat)
 				{
-					if (ReadCfgInfoChat(optName, fileStart + fileSize, &optName) == 0)
+					if (ReadCfgInfoChat(optName, end, &optName) == 0)
 						goto EXIT;
 					i++;
 				}

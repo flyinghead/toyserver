@@ -126,6 +126,7 @@ extern int ncNbUdpLost;
 extern int MaxUdpMsgSize;
 
 extern time_t TimerRef;
+extern const char *TrCars[];
 
 int ncServerGetClientUdpTimeout(void);
 void ncServerGetClientTimers(uint16_t *dynPackPerSec, uint16_t *cmdPackPerSec);
@@ -239,3 +240,5 @@ void asyncWrite(int fd, void(*callback)(void*), void *argument);
 void cancelAsyncRead(int fd);
 void cancelAsyncWrite(int fd);
 int pollWait(int timeout);
+void discordGameCreated(GameRoom *gameRoom);
+void discordRaceStart(GameRoom *gameRoom);
