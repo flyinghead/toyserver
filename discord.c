@@ -73,7 +73,7 @@ static void *postWebhookThread(void *arg)
 
 	n += sprintf(msg + n, "\"embeds\": [ "
 			"{ \"author\": { \"name\": \"Toy Racer\", "
-				"\"icon_url\": \"https://cdn.thegamesdb.net/images/thumb/boxart/front/19336-1.jpg\" }, "
+			  "\"icon_url\": \"https://dcnet.flyca.st/gamepic/toyracer.jpg\" }, "
 			  "\"title\": ");
 	n += writeJsonString(msg + n, notif->embedTitle);
 	n += sprintf(msg + n, ", \"description\": ");
