@@ -18,7 +18,7 @@ struct Socket
     int recvBufSize;
     uint8_t recvBuf[1024];
     int sendBufSize;
-    uint8_t sendBuf[1024];
+    uint8_t sendBuf[2048];
 };
 typedef struct Socket Socket;
 
