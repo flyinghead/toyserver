@@ -194,8 +194,12 @@ static void waitingSocketCallback(void *arg)
 		ncServerRemoveSocket(idx);
 		return;
 	}
-	if (ret == 0)
-	{
+}
+
+void ncTimeOutWaitingSockets(void)
+{
+	for (int i = 0; i < ncNbWaitingSockets; i++) {
+		WaitingSocket *socket = &ncWaitingSockets[i];
 		int timeout = 0;
 		if (socket->loginExpected == 0)
 		{
@@ -210,7 +214,8 @@ static void waitingSocketCallback(void *arg)
 		}
 		if (timeout) {
 			ncSocketClose(&socket->sock.fd);
-			ncServerRemoveSocket(idx);
+			ncServerRemoveSocket(i);
+			i--;
 		}
 	}
 }

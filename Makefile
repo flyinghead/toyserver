@@ -1,14 +1,27 @@
-# deps: libcurl-dev
-SRC = ncList.c ncCRC32.c ncNetMsg.c ncServerChat.c ncServerClient.c ncServerClientMsg.c ncServerGame.c ncServerLog.c ncServerSocket.c toyserver.c discord.c
 #CFLAGS = -g -Wall -fsanitize=address -static-libasan
 CFLAGS = -O3 -g -Wall -DNDEBUG
 INSTALL_DIR = /usr/local/toyserver
 INSTALL_USER = toyserver
+LIBS =
+DCNET = 1
+
+OBJS = ncList.o ncCRC32.o ncNetMsg.o ncServerChat.o ncServerClient.o ncServerClientMsg.o ncServerGame.o ncServerLog.o ncServerSocket.o toyserver.o
+HEADERS = globals.h ncCRC32.h ncList.h netmsg.h toyserver.h
+
+ifeq ($(DCNET),1)
+  OBJS := $(OBJS) dcnet.o
+  LIBS := $(LIBS) -ldcserver -Wl,-rpath,/usr/local/lib
+  CFLAGS := $(CFLAGS) -DDCNET
+  INSTALL_USER := dcnet
+endif
 
 all: toyserver toyserver.service
 
-toyserver: $(SRC) globals.h ncCRC32.h ncList.h netmsg.h toyserver.h Makefile
-	$(CC) $(CFLAGS) -o $@ $(SRC) -lcurl -lpthread
+%.o: %.c $(HEADERS) Makefile
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+toyserver: $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LIBS)
 
 clean:
 	rm -f toyserver *.o toyserver.service

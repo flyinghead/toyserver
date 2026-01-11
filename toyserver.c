@@ -395,10 +395,14 @@ static int ReadCfgFile(char *filename)
 	while (optName < end)
 	{
 		char *value;
-		for (value = optName; value < end && *value != ':'; value++) {
+		for (value = optName; value < end && *value != ':' && *value != '\n'; value++) {
 		}
-		if (*value != ':')
+		if (value >= end)
 			break;
+		if (*value != ':') {
+			optName = value + 1;
+			continue;
+		}
 		*value = '\0';
 		if (strcasecmp(optName, "TCP_Port") == 0)
 		{
@@ -452,15 +456,6 @@ static int ReadCfgFile(char *filename)
 		else if (strcasecmp(optName, "UDP_time_out") == 0) {
 			UdpTimeout = ReadCfgInt(value + 1, end, &optName);
 		}
-		else if (strcasecmp(optName, "DiscordWebhook") == 0)
-		{
-			char *p = value + 1;
-			while (p < end && *p > ' ')
-				p++;
-			*p = '\0';
-			strcpy(DiscordWebhook, value + 1);
-			optName = p + 1;
-		}
 		else
 		{
 			static int nbInfoChat;
@@ -485,7 +480,11 @@ static int ReadCfgFile(char *filename)
 			}
 			else {
 				//if (strcasecmp(optName,"info_Chat_list_end") == 0)
-				optName = value + 1;
+				optName = strchr(value + 1, '\n');
+				if (optName == NULL)
+					optName = value + 1;
+				else
+					optName++;
 			}
 		}
 	}
@@ -700,6 +699,7 @@ static void ServerManage(void)
 
 	ncChatRoomManage();
 	ncGameRoomManage();
+	ncTimeOutWaitingSockets();
 	ncServerManageClients();
 	if (lastrefresh == 0 || lastrefresh < TimerRef)
 	{
@@ -710,6 +710,9 @@ static void ServerManage(void)
 		if (LastDailyDay != tm->tm_mday)
 			SaveDailyStats();
 	}
+#ifdef DCNET
+	updateStatus();
+#endif
 }
 
 static void ServerShutDown(void)
@@ -1220,7 +1223,7 @@ int main(int argc, char **argv)
 	printf("\ncommand :->\n");
 	while (ProgramTerminated == 0)
 	{
-		pollWait(TotalStats.connectionCount == 0 ? 1000 : 10);	// wait 1 s when idle, 10 ms when active
+		pollWait(TotalStats.connectionCount == 0 ? 10000 : 10);	// wait 10 s when idle, 10 ms when active
 		ManageTime();
 		NbFrames += 1;
 		if (next_nb_frames == 0) {

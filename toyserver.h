@@ -220,6 +220,7 @@ void ncLogWrite(int logType, char *msg);
 void ncLogPrintf(int logType, char *format, ...);
 int ncServerStartListening(uint16_t tcpport);
 void ncServerStopListening(void);
+void ncTimeOutWaitingSockets(void);
 void ncServerRemoveSocket(int idx);
 void ncServerSetLoginCallback(void *callback);
 int ncServerSocketInit(uint16_t tcpPort, uint16_t udpPort);
@@ -240,5 +241,8 @@ void asyncWrite(int fd, void(*callback)(void*), void *argument);
 void cancelAsyncRead(int fd);
 void cancelAsyncWrite(int fd);
 int pollWait(int timeout);
+#ifdef DCNET
 void discordGameCreated(GameRoom *gameRoom);
 void discordRaceStart(GameRoom *gameRoom);
+void updateStatus();
+#endif
