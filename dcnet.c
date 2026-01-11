@@ -51,7 +51,7 @@ void discordRaceStart(GameRoom *gameRoom)
 	discordNotif("toyracer", "", title, text);
 }
 
-static void counter(void *, void *counter) {
+static void counter(void *unused, void *counter) {
 	*(int *)counter += 1;
 }
 
