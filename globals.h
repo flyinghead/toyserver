@@ -13,6 +13,8 @@ int ncNbUdpLost;
 int MaxUdpMsgSize;
 int ncNbTcpSent;
 
+char DCNetGameId[32] = "toyracer";
+
 const char *Languages[] = {
 	"English",
 	"French",

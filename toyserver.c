@@ -456,6 +456,16 @@ static int ReadCfgFile(char *filename)
 		else if (strcasecmp(optName, "UDP_time_out") == 0) {
 			UdpTimeout = ReadCfgInt(value + 1, end, &optName);
 		}
+		else if (strcasecmp(optName, "dcnet_gameid") == 0)
+		{
+			char *p = value + 1;
+			while (p < end && *p > ' ')
+				p++;
+			*p = '\0';
+			strcpy(DCNetGameId, value + 1);
+			optName = p + 1;
+
+		}
 		else
 		{
 			static int nbInfoChat;

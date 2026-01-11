@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+extern char DCNetGameId[];
+
 static void clientList(Client *client, void *arg)
 {
 	char *list = (char *)arg;
@@ -67,6 +69,6 @@ void updateStatus()
 	ncServerEnumClients((void (*)(Client *, void *))counter, &playerCount);
 	int gameCount = 0;
 	ncServerEnumGameRooms((void (*)(GameRoom *, void *))counter, &gameCount);
-	statusUpdate("toyracer", playerCount, gameCount);
-	statusCommit("toyracer");
+	statusUpdate(DCNetGameId, playerCount, gameCount);
+	statusCommit(DCNetGameId);
 }
