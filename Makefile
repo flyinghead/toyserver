@@ -44,5 +44,6 @@ toyserver.service: toyserver.service.in Makefile
 installservice: toyserver.service
 	mkdir -p $(localstatedir)/lib
 	install -o $(user) -g $(user) -d $(localstatedir)/lib/toyserver
+	mkdir -p $(localstatedir)/log
 	cp $< /usr/lib/systemd/system/
 	systemctl enable toyserver.service
