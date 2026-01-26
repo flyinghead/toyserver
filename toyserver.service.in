@@ -8,7 +8,10 @@ Type=simple
 Restart=always
 RestartSec=1
 User=INSTALL_USER
-ExecStart=INSTALL_DIR/toyserver
+WorkingDirectory=LOCALSTATEDIR/lib/toyserver
+ExecStart=SBINDIR/toyserver
+StandardOutput=append:LOCALSTATEDIR/log/toyserver.log
+LimitCORE=200M
 
 [Install]
 WantedBy=multi-user.target

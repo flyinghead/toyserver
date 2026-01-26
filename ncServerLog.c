@@ -1,22 +1,36 @@
 #include "toyserver.h"
 #include <stdarg.h>
 
-const char *ncLog_FileName[] = {
+#ifndef NDEBUG
+static const char *ncLog_FileName[] = {
 		"ncToyServerSocket.log",
 		"ncToyServerClient.log",
 		"ncToyServerGame.log",
 		"ncToyServerChat.log",
 };
+#endif
 
-void ncLogWrite(int logType, char *msg)
+static void ncLogWrite(int logType, char *msg)
 {
 	if (logType >= 0 && logType < 4)
 	{
 #ifdef NDEBUG
-		static FILE *fp;
-		if (fp == NULL)
-			fp = fopen("toyserver.log", "a+");
-
+		FILE *fp = stderr;
+		switch (logType)
+		{
+		case 0:
+			fprintf(stderr, "socket: ");
+			break;
+		case 1:
+			fprintf(stderr, "client: ");
+			break;
+		case 2:
+			fprintf(stderr, "game: ");
+			break;
+		case 3:
+			fprintf(stderr, "chat: ");
+			break;
+		}
 #else
 		FILE *fp = fopen(ncLog_FileName[logType], "a+");
 #endif

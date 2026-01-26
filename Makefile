@@ -1,7 +1,12 @@
+prefix = /usr/local
+exec_prefix = $(prefix)
+sbindir = $(exec_prefix)/sbin
+sysconfdir = $(prefix)/etc
+localstatedir = /var/local
+user = toyserver
 #CFLAGS = -g -Wall -fsanitize=address -static-libasan
 CFLAGS = -O3 -g -Wall -DNDEBUG
-INSTALL_DIR = /usr/local/toyserver
-INSTALL_USER = toyserver
+CFLAGS += "-DCONFDIR=\"$(sysconfdir)\""
 LIBS =
 DCNET = 1
 
@@ -9,13 +14,13 @@ OBJS = ncList.o ncCRC32.o ncNetMsg.o ncServerChat.o ncServerClient.o ncServerCli
 HEADERS = globals.h ncCRC32.h ncList.h netmsg.h toyserver.h
 
 ifeq ($(DCNET),1)
-  OBJS := $(OBJS) dcnet.o
-  LIBS := $(LIBS) -ldcserver -Wl,-rpath,/usr/local/lib
-  CFLAGS := $(CFLAGS) -DDCNET
-  INSTALL_USER := dcnet
+  OBJS += dcnet.o
+  LIBS += -ldcserver -Wl,-rpath,/usr/local/lib
+  CFLAGS += -DDCNET
+  user := dcnet
 endif
 
-all: toyserver toyserver.service
+all: toyserver
 
 %.o: %.c $(HEADERS) Makefile
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -27,13 +32,17 @@ clean:
 	rm -f toyserver *.o toyserver.service
 
 install: all
-	install -o $(INSTALL_USER) -g $(INSTALL_USER) -d $(INSTALL_DIR)
-	install --strip toyserver $(INSTALL_DIR)
+	mkdir -p $(DESTDIR)$(sbindir)
+	install toyserver $(DESTDIR)$(sbindir)
+	mkdir -p $(DESTDIR)$(sysconfdir)
+	cp -n ToyServer.cfg $(DESTDIR)$(sysconfdir)
 
 toyserver.service: toyserver.service.in Makefile
 	cp toyserver.service.in toyserver.service
-	sed -e "s/INSTALL_USER/$(INSTALL_USER)/g" -e "s:INSTALL_DIR:$(INSTALL_DIR):g" < $< > $@
+	sed -e "s/INSTALL_USER/$(user)/g" -e "s:LOCALSTATEDIR:$(localstatedir):g" -e "s:SBINDIR:$(sbindir):g" < $< > $@
 
 installservice: toyserver.service
+	mkdir -p $(localstatedir)/lib
+	install -o $(user) -g $(user) -d $(localstatedir)/lib/toyserver
 	cp $< /usr/lib/systemd/system/
-	systemctl enable /usr/lib/systemd/system/toyserver.service
+	systemctl enable toyserver.service

@@ -7,6 +7,10 @@
 
 #include "globals.h"
 
+#ifndef CONFDIR
+#define CONFDIR "."
+#endif
+
 static int CheckInfoChatFile(char *fileName);
 static void DisplayInfoInfo(int roomId);
 
@@ -502,7 +506,7 @@ static int ReadCfgFile(char *filename)
 EXIT:
 	free(fileStart);
 	if (rc == 0)
-		printf("ERROR : Invalid config file: %s\n", filename);
+		fprintf(stderr, "ERROR : Invalid config file: %s\n", filename);
 
 	return rc;
 }
@@ -673,14 +677,17 @@ static int ServerStart(void)
 	memset(&TotalStats, 0, sizeof(TotalStats));
 	ResetDailyStats();
 	ReadHighScoreFile();
-	FILE *fp = fopen("ToyServer.cfg", "r");
-	fclose(fp);
-	if (fp != NULL && ReadCfgFile("ToyServer.cfg") == 0)
-		return 0;
+	FILE *fp = fopen(CONFDIR "/ToyServer.cfg", "r");
 	if (fp == NULL)
 	{
-		printf("WARNING: can't find config file ToyServer.cfg\n");
+		fprintf(stderr, "WARNING: can't find config file ToyServer.cfg\n");
 		if (ncChatRoomAllocate(MaxNbChats) == 0 || CreateInfoHighScores() == 0)
+			return 0;
+	}
+	else
+	{
+		fclose(fp);
+		if (ReadCfgFile(CONFDIR "/ToyServer.cfg") == 0)
 			return 0;
 	}
 	if (ncServerClientAllocate(MaxNbPlayers) == 0)
@@ -742,7 +749,7 @@ static int CheckInfoChatFile(char *fileName)
 {
 	FILE *fp = fopen(fileName, "r");
 	if (fp == NULL) {
-		printf("ERROR : Can't open file %s.\n", fileName);
+		fprintf(stderr, "ERROR : Can't open file %s.\n", fileName);
 		return 0;
 	}
 	fseek(fp, 0, SEEK_END);
@@ -751,14 +758,14 @@ static int CheckInfoChatFile(char *fileName)
 	if (fileSize >= 25600u)
 	{
 		fclose(fp);
-		printf("ERROR : File %s too big !\n", fileName);
+		fprintf(stderr, "ERROR : File %s too big !\n", fileName);
 		return 0;
 	}
 	char buf[25600];
 	if (fileSize == 0 || fread(buf, fileSize, 1, fp) != 1)
 	{
 		fclose(fp);
-		printf("ERROR : Can't read file %s.\n", fileName);
+		fprintf(stderr, "ERROR : Can't read file %s.\n", fileName);
 		return 0;
 	}
 	fclose(fp);
@@ -768,7 +775,7 @@ static int CheckInfoChatFile(char *fileName)
 	while (line < end)
 	{
 		if (tmpInfoChat.msgCount >= 100) {
-			printf("ERROR : Too many lines in text file %s.\n", fileName);
+			fprintf(stderr, "ERROR : Too many lines in text file %s.\n", fileName);
 			return 0;
 		}
 		char *eol = line;
@@ -776,7 +783,7 @@ static int CheckInfoChatFile(char *fileName)
 			eol++;
 		*eol = '\0';
 		if (strlen(line) > 255) {
-			printf("ERROR : Text line too long!.\n");
+			fprintf(stderr, "ERROR : Text line too long!.\n");
 			return 0;
 		}
 		strcpy(tmpInfoChat.messages[tmpInfoChat.msgCount], line);
@@ -847,7 +854,7 @@ void _strdate(char *date)
 	time_t now;
 	time(&now);
 	struct tm *tm = localtime(&now);
-	sprintf(date,"%02d/%02d/%04d", tm->tm_mon + 1, tm->tm_mday, tm->tm_year + 1900);
+	sprintf(date,"%02d/%02d", tm->tm_mon + 1, tm->tm_mday);
 }
 
 static void DisplayChatInfo(int roomId)
@@ -1212,24 +1219,17 @@ int main(int argc, char **argv)
 	sigaction(SIGINT, &sigact, NULL);
 	sigaction(SIGTERM, &sigact, NULL);
 
-	printf("Starting TOY RACER server...\n");
-	// Change working directory
-	char *slash = strrchr(argv[0], '/');
-	if (slash != NULL) {
-		argv[0][slash - argv[0]] = '\0';
-		int rc = chdir(argv[0]);
-		(void)rc;
-	}
+	fprintf(stderr, "Starting TOY RACER server...\n");
 	ManageTime();
 	if (FirstTimer == 0)
 		FirstTimer = TimerRef;
 	if (ServerStart() == 0) {
-		printf("Can't initialize network !\n\n");
+		fprintf(stderr, "Can't initialize network !\n\n");
 		return 1;
 	}
 	asyncRead(STDIN_FILENO, handleCommand, NULL);
 
-	printf("TOY RACER server (version %d) started !\n\n", SERVER_VERSION);
+	fprintf(stderr, "TOY RACER server (version %d) started !\n\n", SERVER_VERSION);
 	printf("\ncommand :->\n");
 	while (ProgramTerminated == 0)
 	{
@@ -1255,9 +1255,9 @@ int main(int argc, char **argv)
 		ServerManage();
 	}
 	cancelAsyncRead(STDIN_FILENO);
-	printf("TOY RACER server shutting down...\n");
+	fprintf(stderr, "TOY RACER server shutting down...\n");
 	ServerShutDown();
-	printf("OK, bye bye !\n");
+	fprintf(stderr, "OK, bye bye !\n");
 
 	return 0;
 }

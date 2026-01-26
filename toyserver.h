@@ -216,7 +216,6 @@ void ncGameSetPlayerReady(Client *client, NetMsg *msg);
 void ncServerEnumGameRooms(void (*callback)(GameRoom *gameRom, void *arg), void *arg);
 const char *ncGetTimeString(int time);
 const char *ncConvertSeconds(uint32_t totsecs);
-void ncLogWrite(int logType, char *msg);
 void ncLogPrintf(int logType, char *format, ...);
 int ncServerStartListening(uint16_t tcpport);
 void ncServerStopListening(void);
