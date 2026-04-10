@@ -1,6 +1,9 @@
 #pragma once
 #include "ncList.h"
 #include "ncCRC32.h"
+#ifdef DCNET
+#include <dcserver/status.h>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <netinet/in.h>
@@ -241,6 +244,7 @@ void cancelAsyncRead(int fd);
 void cancelAsyncWrite(int fd);
 int pollWait(int timeout);
 #ifdef DCNET
+extern char DCNetGameId[];
 void discordGameCreated(GameRoom *gameRoom);
 void discordRaceStart(GameRoom *gameRoom);
 void updateStatus();

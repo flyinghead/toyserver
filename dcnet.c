@@ -17,6 +17,7 @@ static void clientList(Client *client, void *arg)
 
 void discordGameCreated(GameRoom *gameRoom)
 {
+	statusCreateGame(DCNetGameId);
 	char content[128];
 	char *name = discordEscape(gameRoom->players[0]->listItem.name);
 	sprintf(content, "Player **%s** created a game on track **TRACK %d**", name,
@@ -53,22 +54,14 @@ void discordRaceStart(GameRoom *gameRoom)
 	discordNotif("toyracer", "", title, text);
 }
 
-static void counter(void *unused, void *counter) {
-	*(int *)counter += 1;
-}
-
 void updateStatus()
 {
 	static time_t lastUpdate;
-	// Update every 5 min (default)
-	if (TimerRef - lastUpdate < statusGetInterval() * 1000)
+	if (TimerRef - lastUpdate < statusPingInterval() * 1000)
 		return;
+	if (lastUpdate == 0)
+		statusReset(DCNetGameId);
+	else
+		statusPing(DCNetGameId);
 	lastUpdate = TimerRef;
-
-	int playerCount = 0;
-	ncServerEnumClients((void (*)(Client *, void *))counter, &playerCount);
-	int gameCount = 0;
-	ncServerEnumGameRooms((void (*)(GameRoom *, void *))counter, &gameCount);
-	statusUpdate(DCNetGameId, playerCount, gameCount);
-	statusCommit(DCNetGameId);
 }

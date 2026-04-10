@@ -25,6 +25,9 @@ void ncServerDisconnectClient(Client *client)
 		ncLogPrintf(1,"DISCONNECT : Client '%s' (ID=%d) IP %s , %d, udp %d on socket %d.",
 				client->listItem.name, client->listItem.id, ip, ntohs(client->tcpPort), client->udpPort, client->sock.fd);
 		ncSocketClose(&client->sock.fd);
+#ifdef DCNET
+		statusLeave(DCNetGameId, ip, ntohs(client->tcpPort), client->listItem.name);
+#endif
 	}
 }
 
@@ -142,6 +145,9 @@ int ncServerLoginCallback(int sockfd, uint32_t srcIp, uint16_t tcpPort, NetMsgT1
 	char *addrstr = ncGetAddrString(client->ipAddress);
 	ncLogPrintf(1,"New client '%s' (ID=%d) from %s , %d, udp %d on socket %d at %s.",
 			client->listItem.name, client->listItem.id, addrstr, ntohs(tcpPort), client->udpPort, sockfd, timestr);
+#ifdef DCNET
+	statusJoin(DCNetGameId, addrstr, ntohs(tcpPort), client->listItem.name);
+#endif
 	cancelAsyncRead(sockfd);
 	cancelAsyncWrite(sockfd);
 	asyncRead(sockfd, clientSocketCallback, client);

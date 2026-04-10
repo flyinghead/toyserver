@@ -460,6 +460,7 @@ static int ReadCfgFile(char *filename)
 		else if (strcasecmp(optName, "UDP_time_out") == 0) {
 			UdpTimeout = ReadCfgInt(value + 1, end, &optName);
 		}
+#ifdef DCNET
 		else if (strcasecmp(optName, "dcnet_gameid") == 0)
 		{
 			char *p = value + 1;
@@ -470,6 +471,7 @@ static int ReadCfgFile(char *filename)
 			optName = p + 1;
 
 		}
+#endif
 		else
 		{
 			static int nbInfoChat;

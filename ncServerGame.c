@@ -240,6 +240,10 @@ void ncGameRoomDelete(GameRoom *gameRoom)
 	if (ret == 0)
 		ncLogPrintf(2, "ERROR deleting Game room '%s' (ID=%d) deleted.", gameRoom->listItem.name,
 				gameRoom->listItem.id);
+#ifdef DCNET
+	else
+		statusDeleteGame(DCNetGameId);
+#endif
 }
 
 void ncGameCheckLoad(GameRoom *gameRoom)

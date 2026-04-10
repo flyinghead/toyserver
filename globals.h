@@ -13,7 +13,9 @@ int ncNbUdpLost;
 int MaxUdpMsgSize;
 int ncNbTcpSent;
 
+#ifdef DCNET
 char DCNetGameId[32] = "toyracer";
+#endif
 
 const char *Languages[] = {
 	"English",
